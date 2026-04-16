@@ -5,3 +5,8 @@ langgraph
 pypdf
 python-docx
 python-dotenv
+fastapi
+uvicorn
+python-multipart
+markdown
+httpx
