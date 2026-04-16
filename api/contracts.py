@@ -11,18 +11,6 @@ JobStatus = Literal["queued", "running", "completed", "failed"]
 QCRunMode = Literal["id", "cg", "fg"]
 
 
-class LoginRequest(BaseModel):
-    passcode: str = Field(min_length=1)
-    label: str = Field(default="Internal User", min_length=1, max_length=80)
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_at: str
-    user_label: str
-
-
 class ArtifactResponse(BaseModel):
     name: str
     url: str
@@ -54,4 +42,3 @@ class ReportResponse(BaseModel):
     job_id: str
     report_markdown: str
     report_html: str
-

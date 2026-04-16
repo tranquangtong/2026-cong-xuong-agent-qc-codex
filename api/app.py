@@ -3,12 +3,11 @@ from __future__ import annotations
 import os
 from typing import Annotated
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from api.auth import create_access_token, get_shared_passcode, verify_access_token
-from api.contracts import ArtifactResponse, JobDetailResponse, JobSummaryResponse, LoginRequest, LoginResponse, ReportResponse
+from api.contracts import ArtifactResponse, JobDetailResponse, JobSummaryResponse, ReportResponse
 from api.service import JobService
 
 
@@ -22,17 +21,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def _require_user_label(authorization: Annotated[str | None, Header()] = None) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    token = authorization.removeprefix("Bearer ").strip()
-    try:
-        return verify_access_token(token)
-    except ValueError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
-
 
 def _job_service() -> JobService:
     return JobService()
@@ -74,17 +62,6 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/api/auth/login", response_model=LoginResponse)
-def login(payload: LoginRequest) -> LoginResponse:
-    expected_passcode = get_shared_passcode()
-    if not expected_passcode:
-        raise HTTPException(status_code=500, detail="WEB_UI_SHARED_PASSCODE is not configured")
-    if payload.passcode != expected_passcode:
-        raise HTTPException(status_code=401, detail="Invalid passcode")
-    access_token, expires_at = create_access_token(payload.label)
-    return LoginResponse(access_token=access_token, expires_at=expires_at, user_label=payload.label)
-
-
 @app.post("/api/jobs", response_model=JobDetailResponse)
 def create_job(
     background_tasks: BackgroundTasks,
@@ -93,7 +70,7 @@ def create_job(
     links: Annotated[list[str] | None, Form()] = None,
     images: Annotated[list[UploadFile] | None, File()] = None,
     documents: Annotated[list[UploadFile] | None, File()] = None,
-    user_label: str = Depends(_require_user_label),
+    created_by_label: Annotated[str, Form()] = "Workspace User",
 ) -> JobDetailResponse:
     if mode not in {"id", "cg", "fg"}:
         raise HTTPException(status_code=400, detail="Unsupported mode")
@@ -104,22 +81,20 @@ def create_job(
         links=links or [],
         images=images or [],
         documents=documents or [],
-        created_by_label=user_label,
+        created_by_label=created_by_label.strip() or "Workspace User",
     )
     background_tasks.add_task(service.run_job, job["job_id"])
     return _detail_payload(job)
 
 
 @app.get("/api/jobs", response_model=list[JobSummaryResponse])
-def list_jobs(user_label: str = Depends(_require_user_label)) -> list[JobSummaryResponse]:
-    del user_label
+def list_jobs() -> list[JobSummaryResponse]:
     service = _job_service()
     return [_summary_payload(job) for job in service.list_jobs()]
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobDetailResponse)
-def get_job(job_id: str, user_label: str = Depends(_require_user_label)) -> JobDetailResponse:
-    del user_label
+def get_job(job_id: str) -> JobDetailResponse:
     service = _job_service()
     job = service.get_job(job_id)
     if not job:
@@ -128,8 +103,7 @@ def get_job(job_id: str, user_label: str = Depends(_require_user_label)) -> JobD
 
 
 @app.get("/api/jobs/{job_id}/report", response_model=ReportResponse)
-def get_job_report(job_id: str, user_label: str = Depends(_require_user_label)) -> ReportResponse:
-    del user_label
+def get_job_report(job_id: str) -> ReportResponse:
     service = _job_service()
     job = service.get_job(job_id)
     if not job:
@@ -142,8 +116,7 @@ def get_job_report(job_id: str, user_label: str = Depends(_require_user_label)) 
 
 
 @app.get("/api/jobs/{job_id}/artifacts", response_model=list[ArtifactResponse])
-def list_job_artifacts(job_id: str, user_label: str = Depends(_require_user_label)) -> list[ArtifactResponse]:
-    del user_label
+def list_job_artifacts(job_id: str) -> list[ArtifactResponse]:
     service = _job_service()
     job = service.get_job(job_id)
     if not job:
@@ -152,8 +125,7 @@ def list_job_artifacts(job_id: str, user_label: str = Depends(_require_user_labe
 
 
 @app.get("/api/jobs/{job_id}/artifacts/{artifact_name}")
-def get_job_artifact(job_id: str, artifact_name: str, user_label: str = Depends(_require_user_label)) -> FileResponse:
-    del user_label
+def get_job_artifact(job_id: str, artifact_name: str) -> FileResponse:
     service = _job_service()
     path = service.get_artifact_path(job_id, artifact_name)
     if not path:

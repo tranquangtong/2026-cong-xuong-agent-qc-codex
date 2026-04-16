@@ -30,8 +30,6 @@ class WebApiTests(unittest.TestCase):
             shutil.copy(REPO_ROOT / relative, self.temp_dir / relative)
 
         os.environ["AGENT_QC_ROOT"] = str(self.temp_dir)
-        os.environ["WEB_UI_SHARED_PASSCODE"] = "secret-passcode"
-        os.environ["WEB_UI_TOKEN_SECRET"] = "unit-test-secret"
         os.environ["GROQ_API_KEY"] = "test-groq"
         os.environ["GOOGLE_API_KEY"] = "test-google"
         self.client = TestClient(app)
@@ -39,42 +37,23 @@ class WebApiTests(unittest.TestCase):
     def tearDown(self) -> None:
         for key in (
             "AGENT_QC_ROOT",
-            "WEB_UI_SHARED_PASSCODE",
-            "WEB_UI_TOKEN_SECRET",
             "GROQ_API_KEY",
             "GOOGLE_API_KEY",
         ):
             os.environ.pop(key, None)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def _token(self) -> str:
-        response = self.client.post(
-            "/api/auth/login",
-            json={"passcode": "secret-passcode", "label": "Tong"},
-        )
-        self.assertEqual(response.status_code, 200)
-        return response.json()["access_token"]
-
-    def test_login_rejects_invalid_passcode(self) -> None:
-        response = self.client.post("/api/auth/login", json={"passcode": "wrong", "label": "Tong"})
-        self.assertEqual(response.status_code, 401)
-
     def test_create_content_job_with_document(self) -> None:
-        token = self._token()
         response = self.client.post(
             "/api/jobs",
-            headers={"Authorization": f"Bearer {token}"},
-            data={"mode": "cg", "prompt_text": "Check grammar", "links": "https://www.figma.com/design/abc/demo"},
+            data={"mode": "cg", "prompt_text": "Check grammar", "links": "https://www.figma.com/design/abc/demo", "created_by_label": "Tong"},
             files={"documents": ("storyboard.csv", b"Screen,Copy\n1,Colour choice\n", "text/csv")},
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["mode"], "cg")
         self.assertEqual(payload["status"], "queued")
-        detail = self.client.get(
-            f"/api/jobs/{payload['job_id']}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        detail = self.client.get(f"/api/jobs/{payload['job_id']}")
         self.assertEqual(detail.status_code, 200)
         detail_payload = detail.json()
         self.assertEqual(detail_payload["status"], "completed")
@@ -82,29 +61,21 @@ class WebApiTests(unittest.TestCase):
         self.assertTrue(any("storyboard.csv" in item for item in detail_payload["source_summary"]))
 
     def test_create_graphic_job_with_image(self) -> None:
-        token = self._token()
         response = self.client.post(
             "/api/jobs",
-            headers={"Authorization": f"Bearer {token}"},
-            data={"mode": "fg", "prompt_text": "Review this screen", "links": "https://www.figma.com/design/abc/frame"},
+            data={"mode": "fg", "prompt_text": "Review this screen", "links": "https://www.figma.com/design/abc/frame", "created_by_label": "Tong"},
             files={"images": ("screen.png", b"\x89PNG\r\n\x1a\n", "image/png")},
         )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["status"], "queued")
-        detail = self.client.get(
-            f"/api/jobs/{payload['job_id']}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        detail = self.client.get(f"/api/jobs/{payload['job_id']}")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json()["status"], "completed")
-        artifacts_response = self.client.get(
-            f"/api/jobs/{payload['job_id']}/artifacts",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        artifacts_response = self.client.get(f"/api/jobs/{payload['job_id']}/artifacts")
         self.assertEqual(artifacts_response.status_code, 200)
         self.assertTrue(any(item["name"] == "screen.png" for item in artifacts_response.json()))
 
-    def test_list_jobs_requires_auth(self) -> None:
+    def test_list_jobs_is_public(self) -> None:
         response = self.client.get("/api/jobs")
-        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 200)

@@ -1,7 +1,6 @@
 const defaultApiBase = localStorage.getItem("qcApiBase") || "http://127.0.0.1:8000";
 const state = {
   mode: "id",
-  token: sessionStorage.getItem("qcAccessToken") || "",
   jobs: [],
   selectedJobId: null,
   apiBase: defaultApiBase,
@@ -34,9 +33,8 @@ const modeCopy = {
 
 const elements = {
   apiBaseInput: document.getElementById("apiBaseInput"),
-  passcodeInput: document.getElementById("passcodeInput"),
   labelInput: document.getElementById("labelInput"),
-  loginBtn: document.getElementById("loginBtn"),
+  connectBtn: document.getElementById("connectBtn"),
   loginStatus: document.getElementById("loginStatus"),
   promptInput: document.getElementById("promptInput"),
   linksInput: document.getElementById("linksInput"),
@@ -90,34 +88,17 @@ function renderFileChips(input, container) {
   });
 }
 
-async function login() {
+async function connectBackend() {
   state.apiBase = elements.apiBaseInput.value.trim();
   localStorage.setItem("qcApiBase", state.apiBase);
   localStorage.setItem("qcLabel", elements.labelInput.value.trim());
-  const response = await fetch(apiUrl("/api/auth/login"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      passcode: elements.passcodeInput.value,
-      label: elements.labelInput.value || "Internal User",
-    }),
-  });
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.detail || "Login failed");
-  }
-  state.token = payload.access_token;
-  sessionStorage.setItem("qcAccessToken", state.token);
-  elements.loginStatus.textContent = `Connected as ${payload.user_label}`;
+  await fetchJson("/api/health");
+  elements.loginStatus.textContent = "Backend connected.";
   await refreshJobs();
 }
 
 async function fetchJson(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (state.token) {
-    headers.Authorization = `Bearer ${state.token}`;
-  }
-  const response = await fetch(apiUrl(path), { ...options, headers });
+  const response = await fetch(apiUrl(path), { ...options, headers: { ...(options.headers || {}) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(data.detail || "Request failed");
@@ -210,8 +191,8 @@ function renderJobDetail(job) {
 }
 
 async function refreshJobs() {
-  if (!state.token) {
-    return;
+  if (!state.apiBase) {
+        return;
   }
   state.jobs = await fetchJson("/api/jobs");
   renderJobs();
@@ -269,6 +250,7 @@ async function createJob() {
   const form = new FormData();
   form.append("mode", state.mode);
   form.append("prompt_text", elements.promptInput.value);
+  form.append("created_by_label", elements.labelInput.value.trim() || "Workspace User");
   elements.linksInput.value
     .split("\n")
     .map((line) => line.trim())
@@ -304,9 +286,9 @@ document.querySelectorAll(".preset-pill").forEach((button) => {
 
 elements.imageInput.addEventListener("change", () => renderFileChips(elements.imageInput, elements.imageChips));
 elements.documentInput.addEventListener("change", () => renderFileChips(elements.documentInput, elements.documentChips));
-elements.loginBtn.addEventListener("click", async () => {
+elements.connectBtn.addEventListener("click", async () => {
   try {
-    await login();
+    await connectBackend();
   } catch (error) {
     elements.loginStatus.textContent = error.message;
   }
@@ -324,7 +306,7 @@ elements.statusFilter.addEventListener("change", renderJobs);
 elements.severityFilter.addEventListener("change", renderJobs);
 
 setMode(state.mode);
-if (state.token) {
-  elements.loginStatus.textContent = "Session restored.";
+if (state.apiBase) {
+  elements.loginStatus.textContent = "Ready to connect.";
   refreshJobs().catch(console.error);
 }

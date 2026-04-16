@@ -37,21 +37,17 @@
           </select>
         </div>
         <div class="login-card">
-          <h2>Workspace Access</h2>
+          <h2>Backend Connection</h2>
           <label>
             Backend URL
             <input id="apiBaseInput" type="url" placeholder="https://your-backend.onrender.com" />
           </label>
           <label>
-            Shared passcode
-            <input id="passcodeInput" type="password" placeholder="Enter internal passcode" />
-          </label>
-          <label>
             Your label
             <input id="labelInput" type="text" placeholder="Tong Tran" />
           </label>
-          <button id="loginBtn" class="primary-button">Connect Workspace</button>
-          <p id="loginStatus" class="hint">Sign in once per browser session.</p>
+          <button id="connectBtn" class="primary-button">Connect Backend</button>
+          <p id="loginStatus" class="hint">No auth required. The backend will use API keys from the server-side `.env` file.</p>
         </div>
         <div id="jobList" class="job-list"></div>
       </aside>
