@@ -240,6 +240,37 @@ button:hover {
   margin-bottom: 16px;
 }
 
+.auth-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-card__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(107, 100, 90, 0.12);
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.auth-card--faded {
+  opacity: 0.52;
+  filter: saturate(0.7);
+}
+
+.auth-card--faded input,
+.auth-card--faded button,
+.auth-card--faded select,
+.auth-card--faded textarea {
+  cursor: not-allowed;
+}
+
 .filters {
   margin-bottom: 14px;
 }

@@ -49,6 +49,21 @@
           <button id="connectBtn" class="primary-button">Connect Backend</button>
           <p id="loginStatus" class="hint">No auth required. The backend will use API keys from the server-side `.env` file.</p>
         </div>
+        <div class="login-card auth-card auth-card--faded" aria-hidden="true">
+          <div class="auth-card__head">
+            <h2>Workspace Auth</h2>
+            <span class="auth-card__badge">Later</span>
+          </div>
+          <label>
+            Shared passcode
+            <input type="password" placeholder="Auth will be re-enabled later" disabled />
+          </label>
+          <label>
+            Session policy
+            <input type="text" value="Temporary no-auth mode for fast testing" disabled />
+          </label>
+          <p class="hint">UI keeps this auth block visible as a placeholder, but it is intentionally inactive for now.</p>
+        </div>
         <div id="jobList" class="job-list"></div>
       </aside>
 

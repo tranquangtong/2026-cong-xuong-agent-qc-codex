@@ -1,4 +1,6 @@
-const defaultApiBase = localStorage.getItem("qcApiBase") || "http://127.0.0.1:8000";
+const renderApiBase = "https://cong-xuong-agent-qc-api.onrender.com";
+const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const defaultApiBase = localStorage.getItem("qcApiBase") || (isLocalHost ? "http://127.0.0.1:8000" : renderApiBase);
 const state = {
   mode: "id",
   jobs: [],
