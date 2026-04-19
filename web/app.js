@@ -1,6 +1,13 @@
 const renderApiBase = "https://cong-xuong-agent-qc-api.onrender.com";
 const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const defaultApiBase = localStorage.getItem("qcApiBase") || (isLocalHost ? "http://127.0.0.1:8000" : renderApiBase);
+const uiCopy = {
+  evidenceVi: "Bằng chứng",
+  impactVi: "Ảnh hưởng",
+  recommendedFixVi: "Đề xuất sửa",
+  severityVi: "Mức độ",
+};
+
 const state = {
   mode: "id",
   jobs: [],
@@ -101,7 +108,7 @@ function repairText(value) {
     const originalScore = vietnameseScore(value) - mojibakeScore(value);
     const repairedScore = vietnameseScore(repaired) - mojibakeScore(repaired);
     return repairedScore > originalScore ? repaired : value;
-  } catch (error) {
+  } catch {
     return value;
   }
 }
@@ -159,7 +166,7 @@ function renderImageChips() {
           (item) => `
             <span class="chip">
               <span>${escapeHtml(item.file.name)}</span>
-              <button type="button" data-remove-image="${escapeHtml(item.key)}" aria-label="Remove ${escapeHtml(item.file.name)}">×</button>
+              <button type="button" data-remove-image="${escapeHtml(item.key)}" aria-label="Remove ${escapeHtml(item.file.name)}">x</button>
             </span>
           `
         )
@@ -212,17 +219,26 @@ function parseMarkdownTable(tableBlock) {
   return lines.slice(2).map((line) => line.slice(1, -1).split("|").map((cell) => repairText(cell.trim())));
 }
 
+function extractMarkdownTables(markdown) {
+  return markdown.match(/\|[^\n]+\|\n\|[-| :]+\|\n(?:\|[^\n]+\|\n?)+/g) || [];
+}
+
+function isVietnameseFindingsTable(tableBlock) {
+  const headerLine = tableBlock.split("\n")[0] || "";
+  const headers = headerLine
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => repairText(cell.trim()));
+  return headers.includes(uiCopy.severityVi) && headers.includes(uiCopy.evidenceVi) && headers.includes(uiCopy.recommendedFixVi);
+}
+
 function extractVietnameseFindingMap(reportMarkdown) {
   const markdown = repairText(reportMarkdown || "");
-  const sectionMatch = markdown.match(/##\s+Bản Dịch Tiếng Việt([\s\S]*)/i);
-  if (!sectionMatch) {
+  const tableBlock = extractMarkdownTables(markdown).find(isVietnameseFindingsTable);
+  if (!tableBlock) {
     return new Map();
   }
-  const findingsMatch = sectionMatch[1].match(/##\s+Findings[\s\S]*?(\|[^\n]+\|\n\|[-| ]+\|\n(?:\|[^\n]+\|\n?)+)/i);
-  if (!findingsMatch) {
-    return new Map();
-  }
-  const rows = parseMarkdownTable(findingsMatch[1]);
+  const rows = parseMarkdownTable(tableBlock);
   const findingMap = new Map();
   rows.forEach((cells) => {
     if (cells.length < 6) {
@@ -239,14 +255,31 @@ function extractVietnameseFindingMap(reportMarkdown) {
   return findingMap;
 }
 
+function shouldShowSecondaryText(primaryText, secondaryText) {
+  const primary = repairText(primaryText || "").replace(/\s+/g, " ").trim();
+  const secondary = repairText(secondaryText || "").replace(/\s+/g, " ").trim();
+  return Boolean(secondary) && secondary !== primary;
+}
+
+function singleField(label, text) {
+  const value = repairText(text || "");
+  return `
+    <div class="finding-block">
+      <p class="finding-label">${escapeHtml(label)}</p>
+      <p class="finding-text">${escapeHtml(value)}</p>
+    </div>
+  `;
+}
+
 function bilingualField(labelEn, labelVi, englishText, vietnameseText) {
   const english = repairText(englishText || "");
-  const vietnamese = repairText(vietnameseText || english || "");
+  const vietnamese = repairText(vietnameseText || "");
+  const showVietnamese = shouldShowSecondaryText(english, vietnamese);
   return `
     <div class="finding-block">
       <p class="finding-label">${escapeHtml(labelEn)} / ${escapeHtml(labelVi)}</p>
       <p class="finding-text">${escapeHtml(english)}</p>
-      <p class="finding-text vi-copy">${escapeHtml(vietnamese)}</p>
+      ${showVietnamese ? `<p class="finding-text vi-copy">${escapeHtml(vietnamese)}</p>` : ""}
     </div>
   `;
 }
@@ -368,19 +401,21 @@ function renderJobDetail(job) {
     ? job.findings
         .map((finding) => {
           const translated = translatedFindings.get(finding.id) || {};
+          const translatedArea = repairText(translated.area || "");
+          const showVietnameseArea = shouldShowSecondaryText(finding.area, translatedArea);
           return `
             <article class="finding-card">
               <div class="finding-top">
                 <div class="finding-title">
                   <strong>${escapeHtml(repairText(finding.id))} - ${escapeHtml(repairText(finding.area))}</strong>
-                  <span class="vi-copy">${escapeHtml(repairText(translated.area || finding.area))}</span>
+                  ${showVietnameseArea ? `<span class="vi-copy">${escapeHtml(translatedArea)}</span>` : ""}
                 </div>
                 <span class="severity-${escapeHtml(finding.severity.toLowerCase())}">${escapeHtml(repairText(finding.severity))}</span>
               </div>
-              ${bilingualField("Agent", "Agent", finding.source_agent, finding.source_agent)}
-              ${bilingualField("Evidence", "Bằng chứng", finding.evidence, translated.evidence)}
-              ${bilingualField("Impact", "Ảnh hưởng", finding.impact, translated.impact)}
-              ${bilingualField("Recommended fix", "Đề xuất sửa", finding.recommended_fix, translated.recommended_fix)}
+              ${singleField("Agent", finding.source_agent)}
+              ${bilingualField("Evidence", uiCopy.evidenceVi, finding.evidence, translated.evidence)}
+              ${bilingualField("Impact", uiCopy.impactVi, finding.impact, translated.impact)}
+              ${bilingualField("Recommended fix", uiCopy.recommendedFixVi, finding.recommended_fix, translated.recommended_fix)}
             </article>
           `;
         })
