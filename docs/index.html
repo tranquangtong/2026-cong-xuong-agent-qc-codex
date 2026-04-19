@@ -17,7 +17,7 @@
             <p class="eyebrow">Operations</p>
             <h1>QC Runs</h1>
           </div>
-          <button id="refreshJobsBtn" class="ghost-button">Refresh</button>
+          <button id="refreshJobsBtn" class="ghost-button" type="button">Refresh</button>
         </div>
         <div class="filters">
           <select id="statusFilter">
@@ -46,7 +46,7 @@
             Your label
             <input id="labelInput" type="text" placeholder="Tong Tran" />
           </label>
-          <button id="connectBtn" class="primary-button">Connect Backend</button>
+          <button id="connectBtn" class="primary-button" type="button">Connect Backend</button>
           <p id="loginStatus" class="hint">No auth required. The backend will use API keys from the server-side `.env` file.</p>
         </div>
         <div class="login-card auth-card auth-card--faded" aria-hidden="true">
@@ -77,15 +77,15 @@
         </div>
 
         <div class="mode-tabs">
-          <button class="mode-tab active" data-mode="id">ID</button>
-          <button class="mode-tab" data-mode="cg">Content</button>
-          <button class="mode-tab" data-mode="fg">Graphic</button>
+          <button class="mode-tab active" data-mode="id" type="button">ID</button>
+          <button class="mode-tab" data-mode="cg" type="button">Content</button>
+          <button class="mode-tab" data-mode="fg" type="button">Graphic</button>
         </div>
 
         <div class="preset-row">
-          <button class="preset-pill" data-preset="Check navigation + quiz logic">Check navigation + quiz logic</button>
-          <button class="preset-pill" data-preset="Check grammar + British English">Check grammar + British English</button>
-          <button class="preset-pill" data-preset="Check layout + WCAG visual issues">Check layout + WCAG visual issues</button>
+          <button class="preset-pill" data-preset="Check navigation + quiz logic" type="button">Check navigation + quiz logic</button>
+          <button class="preset-pill" data-preset="Check grammar + British English" type="button">Check grammar + British English</button>
+          <button class="preset-pill" data-preset="Check layout + WCAG visual issues" type="button">Check layout + WCAG visual issues</button>
         </div>
 
         <label class="field">
@@ -109,11 +109,15 @@
         </div>
 
         <div class="upload-grid">
-          <label class="upload-card">
-            <span>Screenshots / visual evidence</span>
-            <input id="imageInput" type="file" accept="image/*" multiple />
-            <small>PNG, JPG, WEBP, GIF</small>
-          </label>
+          <div id="imagePasteZone" class="upload-card upload-card--paste" tabindex="0" role="button" aria-label="Paste screenshots here">
+            <div class="upload-card__head">
+              <span>Screenshots / visual evidence</span>
+              <button id="imageBrowseBtn" class="ghost-button upload-inline-button" type="button">Choose Files</button>
+            </div>
+            <p class="upload-card__copy">Paste one or many screenshots here with <kbd>Ctrl</kbd> + <kbd>V</kbd>, or drag and drop them into this box.</p>
+            <input id="imageInput" class="visually-hidden" type="file" accept="image/*" multiple />
+            <small>Clipboard paste enabled. PNG, JPG, WEBP, GIF</small>
+          </div>
           <label class="upload-card">
             <span>Documents for content QA</span>
             <input id="documentInput" type="file" accept=".pdf,.csv,.docx" multiple />
@@ -133,7 +137,7 @@
         </div>
 
         <div class="composer-actions">
-          <button id="runBtn" class="primary-button">Run QC</button>
+          <button id="runBtn" class="primary-button" type="button">Run QC</button>
           <p class="hint">Results will appear live in the detail panel on the right.</p>
         </div>
       </main>
@@ -165,20 +169,18 @@
         <div id="severityStrip" class="severity-strip"></div>
 
         <div class="detail-tabs">
-          <button class="detail-tab active" data-detail="dashboard">Dashboard</button>
-          <button class="detail-tab" data-detail="report">Full Report</button>
-          <button class="detail-tab" data-detail="artifacts">Artifacts</button>
+          <button class="detail-tab active" type="button" aria-current="page">Dashboard</button>
+          <a id="reportDownloadBtn" class="detail-tab detail-action is-disabled" href="#" download="report.md" aria-disabled="true">Download report.md</a>
+          <button class="detail-tab detail-tab--disabled" type="button" disabled aria-disabled="true">Artifacts</button>
         </div>
 
         <div id="detailDashboard" class="detail-view active">
           <div id="sourceSummary" class="source-summary"></div>
           <div id="findingsTable" class="findings-table"></div>
         </div>
-        <div id="detailReport" class="detail-view markdown-surface"></div>
-        <div id="detailArtifacts" class="detail-view artifacts-list"></div>
       </section>
     </div>
 
     <script src="./qc-app.js" type="module"></script>
   </body>
-  </html>
+</html>

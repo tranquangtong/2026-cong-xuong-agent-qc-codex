@@ -7,6 +7,8 @@ const state = {
   selectedJobId: null,
   apiBase: defaultApiBase,
   pollTimer: null,
+  pastedImages: [],
+  reportDownloadUrl: null,
 };
 
 const modeCopy = {
@@ -41,6 +43,8 @@ const elements = {
   promptInput: document.getElementById("promptInput"),
   linksInput: document.getElementById("linksInput"),
   imageInput: document.getElementById("imageInput"),
+  imagePasteZone: document.getElementById("imagePasteZone"),
+  imageBrowseBtn: document.getElementById("imageBrowseBtn"),
   documentInput: document.getElementById("documentInput"),
   imageChips: document.getElementById("imageChips"),
   documentChips: document.getElementById("documentChips"),
@@ -60,8 +64,7 @@ const elements = {
   severityStrip: document.getElementById("severityStrip"),
   sourceSummary: document.getElementById("sourceSummary"),
   findingsTable: document.getElementById("findingsTable"),
-  detailReport: document.getElementById("detailReport"),
-  detailArtifacts: document.getElementById("detailArtifacts"),
+  reportDownloadBtn: document.getElementById("reportDownloadBtn"),
 };
 
 elements.apiBaseInput.value = state.apiBase;
@@ -71,23 +74,208 @@ function apiUrl(path) {
   return `${state.apiBase.replace(/\/$/, "")}${path}`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function mojibakeScore(value) {
+  return (value.match(/[ÃÂÄÅÆá»â€]/g) || []).length;
+}
+
+function vietnameseScore(value) {
+  return (value.match(/[àáạảãâăđèéẹẻẽêìíịỉĩòóọỏõôơùúụủũưỳýỵỷỹÀÁẠẢÃÂĂĐÈÉẸẺẼÊÌÍỊỈĨÒÓỌỎÕÔƠÙÚỤỦŨƯỲÝỴỶỸ]/g) || []).length;
+}
+
+function repairText(value) {
+  if (typeof value !== "string" || !/[ÃÂÄÅÆá»â€]/.test(value)) {
+    return value ?? "";
+  }
+  try {
+    const bytes = Uint8Array.from(Array.from(value, (character) => character.charCodeAt(0) & 0xff));
+    const repaired = new TextDecoder("utf-8").decode(bytes);
+    const originalScore = vietnameseScore(value) - mojibakeScore(value);
+    const repairedScore = vietnameseScore(repaired) - mojibakeScore(repaired);
+    return repairedScore > originalScore ? repaired : value;
+  } catch (error) {
+    return value;
+  }
+}
+
 function setMode(mode) {
   state.mode = mode;
   document.querySelectorAll(".mode-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === mode);
   });
   elements.modeGuide.textContent = modeCopy[mode].guide;
-  elements.modeExamples.innerHTML = modeCopy[mode].examples.map((item) => `<li>${item}</li>`).join("");
+  elements.modeExamples.innerHTML = modeCopy[mode].examples.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
 }
 
-function renderFileChips(input, container) {
+function setFiles(input, files) {
+  const transfer = new DataTransfer();
+  files.forEach((file) => transfer.items.add(file));
+  input.files = transfer.files;
+}
+
+function makePastedFile(file, index) {
+  const extension = file.type.split("/")[1] || "png";
+  const name = file.name && file.name !== "image.png" ? file.name : `pasted-screenshot-${Date.now()}-${index + 1}.${extension}`;
+  return new File([file], name, { type: file.type || "image/png", lastModified: Date.now() });
+}
+
+function selectedImageItems() {
+  const fileItems = [...elements.imageInput.files].map((file, index) => ({
+    kind: "input",
+    key: `input-${index}-${file.name}-${file.size}-${file.lastModified}`,
+    file,
+  }));
+  const pastedItems = state.pastedImages.map((file, index) => ({
+    kind: "pasted",
+    key: `pasted-${index}-${file.name}-${file.size}-${file.lastModified}`,
+    file,
+  }));
+  return [...fileItems, ...pastedItems];
+}
+
+function removeImageItem(key) {
+  if (key.startsWith("input-")) {
+    const remaining = [...elements.imageInput.files].filter((file, index) => `input-${index}-${file.name}-${file.size}-${file.lastModified}` !== key);
+    setFiles(elements.imageInput, remaining);
+  } else {
+    state.pastedImages = state.pastedImages.filter((file, index) => `pasted-${index}-${file.name}-${file.size}-${file.lastModified}` !== key);
+  }
+  renderImageChips();
+}
+
+function renderImageChips() {
+  const items = selectedImageItems();
+  elements.imageChips.innerHTML = items.length
+    ? items
+        .map(
+          (item) => `
+            <span class="chip">
+              <span>${escapeHtml(item.file.name)}</span>
+              <button type="button" data-remove-image="${escapeHtml(item.key)}" aria-label="Remove ${escapeHtml(item.file.name)}">×</button>
+            </span>
+          `
+        )
+        .join("")
+    : "<span class='hint'>No screenshots selected yet.</span>";
+  elements.imageChips.querySelectorAll("[data-remove-image]").forEach((button) => {
+    button.addEventListener("click", () => removeImageItem(button.dataset.removeImage));
+  });
+}
+
+function renderFileChips(input, container, emptyMessage) {
   container.innerHTML = "";
+  if (!input.files.length) {
+    container.innerHTML = `<span class="hint">${escapeHtml(emptyMessage)}</span>`;
+    return;
+  }
   [...input.files].forEach((file) => {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = file.name;
     container.appendChild(chip);
   });
+}
+
+function addPastedImages(fileList) {
+  const images = fileList.filter((file) => file.type.startsWith("image/"));
+  if (!images.length) {
+    return false;
+  }
+  state.pastedImages = [...state.pastedImages, ...images.map(makePastedFile)];
+  renderImageChips();
+  elements.imagePasteZone.classList.add("is-focused");
+  return true;
+}
+
+function filesFromDataTransferItems(items) {
+  return [...items]
+    .map((item) => (typeof item.getAsFile === "function" ? item.getAsFile() : null))
+    .filter(Boolean);
+}
+
+function parseMarkdownTable(tableBlock) {
+  const lines = tableBlock
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|"));
+  if (lines.length < 3) {
+    return [];
+  }
+  return lines.slice(2).map((line) => line.slice(1, -1).split("|").map((cell) => repairText(cell.trim())));
+}
+
+function extractVietnameseFindingMap(reportMarkdown) {
+  const markdown = repairText(reportMarkdown || "");
+  const sectionMatch = markdown.match(/##\s+Bản Dịch Tiếng Việt([\s\S]*)/i);
+  if (!sectionMatch) {
+    return new Map();
+  }
+  const findingsMatch = sectionMatch[1].match(/##\s+Findings[\s\S]*?(\|[^\n]+\|\n\|[-| ]+\|\n(?:\|[^\n]+\|\n?)+)/i);
+  if (!findingsMatch) {
+    return new Map();
+  }
+  const rows = parseMarkdownTable(findingsMatch[1]);
+  const findingMap = new Map();
+  rows.forEach((cells) => {
+    if (cells.length < 6) {
+      return;
+    }
+    findingMap.set(cells[0], {
+      severity: cells[1],
+      area: cells[2],
+      evidence: cells[3],
+      impact: cells[4],
+      recommended_fix: cells[5],
+    });
+  });
+  return findingMap;
+}
+
+function bilingualField(labelEn, labelVi, englishText, vietnameseText) {
+  const english = repairText(englishText || "");
+  const vietnamese = repairText(vietnameseText || english || "");
+  return `
+    <div class="finding-block">
+      <p class="finding-label">${escapeHtml(labelEn)} / ${escapeHtml(labelVi)}</p>
+      <p class="finding-text">${escapeHtml(english)}</p>
+      <p class="finding-text vi-copy">${escapeHtml(vietnamese)}</p>
+    </div>
+  `;
+}
+
+function updateReportDownload(job) {
+  if (state.reportDownloadUrl) {
+    URL.revokeObjectURL(state.reportDownloadUrl);
+    state.reportDownloadUrl = null;
+  }
+  const reportArtifact = (job?.artifact_urls || []).find((item) => item.name === "report.md");
+  const reportMarkdown = repairText(job?.report_markdown || "");
+  if (reportArtifact) {
+    elements.reportDownloadBtn.href = apiUrl(reportArtifact.url);
+    elements.reportDownloadBtn.download = "report.md";
+    elements.reportDownloadBtn.classList.remove("is-disabled");
+    elements.reportDownloadBtn.setAttribute("aria-disabled", "false");
+    return;
+  }
+  if (reportMarkdown) {
+    state.reportDownloadUrl = URL.createObjectURL(new Blob([reportMarkdown], { type: "text/markdown;charset=utf-8" }));
+    elements.reportDownloadBtn.href = state.reportDownloadUrl;
+    elements.reportDownloadBtn.download = "report.md";
+    elements.reportDownloadBtn.classList.remove("is-disabled");
+    elements.reportDownloadBtn.setAttribute("aria-disabled", "false");
+    return;
+  }
+  elements.reportDownloadBtn.href = "#";
+  elements.reportDownloadBtn.classList.add("is-disabled");
+  elements.reportDownloadBtn.setAttribute("aria-disabled", "true");
 }
 
 async function connectBackend() {
@@ -124,20 +312,21 @@ function renderJobs() {
   const visibleJobs = state.jobs.filter(currentFiltersMatch);
   elements.jobList.innerHTML = visibleJobs
     .map((job) => {
-      const severitySummary = Object.entries(job.severity_counts || {})
-        .map(([key, value]) => `${key}:${value}`)
-        .join(" · ") || "No findings yet";
+      const severitySummary =
+        Object.entries(job.severity_counts || {})
+          .map(([key, value]) => `${key}:${value}`)
+          .join(" | ") || "No findings yet";
       return `
-        <article class="job-card ${job.job_id === state.selectedJobId ? "active" : ""}" data-job-id="${job.job_id}">
+        <article class="job-card ${job.job_id === state.selectedJobId ? "active" : ""}" data-job-id="${escapeHtml(job.job_id)}">
           <div class="job-meta">
-            <strong>${job.mode.toUpperCase()}</strong>
-            <span>${job.status}</span>
+            <strong>${escapeHtml(job.mode.toUpperCase())}</strong>
+            <span>${escapeHtml(repairText(job.status))}</span>
           </div>
-          <h3>${job.prompt_preview || "Untitled run"}</h3>
-          <p>${severitySummary}</p>
+          <h3>${escapeHtml(repairText(job.prompt_preview || "Untitled run"))}</h3>
+          <p>${escapeHtml(repairText(severitySummary))}</p>
           <div class="job-meta">
-            <span>${job.created_at}</span>
-            <span>${job.created_by_label}</span>
+            <span>${escapeHtml(repairText(job.created_at))}</span>
+            <span>${escapeHtml(repairText(job.created_by_label))}</span>
           </div>
         </article>
       `;
@@ -152,49 +341,57 @@ function renderJobDetail(job) {
   if (!job) {
     elements.detailTitle.textContent = "No run selected";
     elements.detailStatus.textContent = "Waiting";
+    elements.findingCount.textContent = "0";
+    elements.agentSummary.textContent = "-";
+    elements.createdAt.textContent = "-";
+    elements.severityStrip.innerHTML = "";
+    elements.sourceSummary.innerHTML = "<p class='hint'>No source summary yet.</p>";
+    elements.findingsTable.innerHTML = "<div class='finding-empty'>Findings will appear here when the run completes.</div>";
+    updateReportDownload(null);
     return;
   }
-  elements.detailTitle.textContent = `${job.mode.toUpperCase()} run · ${job.job_id}`;
-  elements.detailStatus.textContent = job.status;
+
+  const translatedFindings = extractVietnameseFindingMap(job.report_markdown);
+  elements.detailTitle.textContent = `${repairText(job.mode.toUpperCase())} run - ${repairText(job.job_id)}`;
+  elements.detailStatus.textContent = repairText(job.status);
   elements.findingCount.textContent = String(job.findings_count || 0);
-  const agents = [...new Set((job.findings || []).map((finding) => finding.source_agent))];
+  const agents = [...new Set((job.findings || []).map((finding) => repairText(finding.source_agent)))];
   elements.agentSummary.textContent = agents.length ? agents.join(", ") : "Pending";
-  elements.createdAt.textContent = job.created_at;
+  elements.createdAt.textContent = repairText(job.created_at);
   elements.severityStrip.innerHTML = Object.entries(job.severity_counts || {})
-    .map(([severity, count]) => `<span class="severity-pill">${severity}: ${count}</span>`)
+    .map(([severity, count]) => `<span class="severity-pill">${escapeHtml(repairText(severity))}: ${escapeHtml(count)}</span>`)
     .join("");
   elements.sourceSummary.innerHTML = (job.source_summary || []).length
-    ? `<h3>Source Summary</h3><ul>${job.source_summary.map((item) => `<li>${item}</li>`).join("")}</ul>`
+    ? `<h3>Source Summary</h3><ul>${job.source_summary.map((item) => `<li>${escapeHtml(repairText(item))}</li>`).join("")}</ul>`
     : "<p class='hint'>No source summary yet.</p>";
   elements.findingsTable.innerHTML = (job.findings || []).length
     ? job.findings
-        .map(
-          (finding) => `
+        .map((finding) => {
+          const translated = translatedFindings.get(finding.id) || {};
+          return `
             <article class="finding-card">
               <div class="finding-top">
-                <strong>${finding.id} · ${finding.area}</strong>
-                <span class="severity-${finding.severity.toLowerCase()}">${finding.severity}</span>
+                <div class="finding-title">
+                  <strong>${escapeHtml(repairText(finding.id))} - ${escapeHtml(repairText(finding.area))}</strong>
+                  <span class="vi-copy">${escapeHtml(repairText(translated.area || finding.area))}</span>
+                </div>
+                <span class="severity-${escapeHtml(finding.severity.toLowerCase())}">${escapeHtml(repairText(finding.severity))}</span>
               </div>
-              <p><strong>Agent:</strong> ${finding.source_agent}</p>
-              <p><strong>Evidence:</strong> ${finding.evidence}</p>
-              <p><strong>Impact:</strong> ${finding.impact}</p>
-              <p><strong>Recommended fix:</strong> ${finding.recommended_fix}</p>
+              ${bilingualField("Agent", "Agent", finding.source_agent, finding.source_agent)}
+              ${bilingualField("Evidence", "Bằng chứng", finding.evidence, translated.evidence)}
+              ${bilingualField("Impact", "Ảnh hưởng", finding.impact, translated.impact)}
+              ${bilingualField("Recommended fix", "Đề xuất sửa", finding.recommended_fix, translated.recommended_fix)}
             </article>
-          `
-        )
+          `;
+        })
         .join("")
-    : "<p class='hint'>Findings will appear here when the run completes.</p>";
-  elements.detailReport.innerHTML = job.report_html || "<p class='hint'>Full report is not available yet.</p>";
-  elements.detailArtifacts.innerHTML = (job.artifact_urls || []).length
-    ? job.artifact_urls
-        .map((item) => `<a href="${apiUrl(item.url)}" target="_blank" rel="noreferrer">${item.name}</a>`)
-        .join("")
-    : "<p class='hint'>No artifacts available yet.</p>";
+    : "<div class='finding-empty'>Findings will appear here when the run completes.</div>";
+  updateReportDownload(job);
 }
 
 async function refreshJobs() {
   if (!state.apiBase) {
-        return;
+    return;
   }
   state.jobs = await fetchJson("/api/jobs");
   renderJobs();
@@ -259,6 +456,7 @@ async function createJob() {
     .filter(Boolean)
     .forEach((link) => form.append("links", link));
   [...elements.imageInput.files].forEach((file) => form.append("images", file));
+  state.pastedImages.forEach((file) => form.append("images", file));
   [...elements.documentInput.files].forEach((file) => form.append("documents", file));
   elements.runStateBadge.textContent = "Queued";
   const job = await fetchJson("/api/jobs", { method: "POST", body: form });
@@ -272,22 +470,68 @@ document.querySelectorAll(".mode-tab").forEach((button) => {
   button.addEventListener("click", () => setMode(button.dataset.mode));
 });
 
-document.querySelectorAll(".detail-tab").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".detail-tab").forEach((tab) => tab.classList.toggle("active", tab === button));
-    document.querySelectorAll(".detail-view").forEach((view) => view.classList.remove("active"));
-    document.getElementById(`detail${button.dataset.detail.charAt(0).toUpperCase()}${button.dataset.detail.slice(1)}`).classList.add("active");
-  });
-});
-
 document.querySelectorAll(".preset-pill").forEach((button) => {
   button.addEventListener("click", () => {
     elements.promptInput.value = button.dataset.preset;
   });
 });
 
-elements.imageInput.addEventListener("change", () => renderFileChips(elements.imageInput, elements.imageChips));
-elements.documentInput.addEventListener("change", () => renderFileChips(elements.documentInput, elements.documentChips));
+elements.imageBrowseBtn.addEventListener("click", (event) => {
+  event.stopPropagation();
+  elements.imageInput.click();
+});
+
+elements.imagePasteZone.addEventListener("click", () => {
+  elements.imagePasteZone.focus();
+});
+
+elements.imagePasteZone.addEventListener("focus", () => {
+  elements.imagePasteZone.classList.add("is-focused");
+});
+
+elements.imagePasteZone.addEventListener("blur", () => {
+  elements.imagePasteZone.classList.remove("is-focused");
+});
+
+elements.imagePasteZone.addEventListener("paste", (event) => {
+  const files = filesFromDataTransferItems(event.clipboardData?.items || []);
+  if (addPastedImages(files)) {
+    event.preventDefault();
+  }
+});
+
+document.addEventListener("paste", (event) => {
+  const target = event.target;
+  const isTypingTarget =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target?.isContentEditable;
+  if (isTypingTarget) {
+    return;
+  }
+  const files = filesFromDataTransferItems(event.clipboardData?.items || []);
+  if (addPastedImages(files)) {
+    event.preventDefault();
+  }
+});
+
+elements.imagePasteZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
+  elements.imagePasteZone.classList.add("is-dragover");
+});
+
+elements.imagePasteZone.addEventListener("dragleave", () => {
+  elements.imagePasteZone.classList.remove("is-dragover");
+});
+
+elements.imagePasteZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  elements.imagePasteZone.classList.remove("is-dragover");
+  addPastedImages([...event.dataTransfer.files]);
+});
+
+elements.imageInput.addEventListener("change", renderImageChips);
+elements.documentInput.addEventListener("change", () => renderFileChips(elements.documentInput, elements.documentChips, "No documents selected yet."));
 elements.connectBtn.addEventListener("click", async () => {
   try {
     await connectBackend();
@@ -306,8 +550,16 @@ elements.runBtn.addEventListener("click", async () => {
 elements.refreshJobsBtn.addEventListener("click", refreshJobs);
 elements.statusFilter.addEventListener("change", renderJobs);
 elements.severityFilter.addEventListener("change", renderJobs);
+elements.reportDownloadBtn.addEventListener("click", (event) => {
+  if (elements.reportDownloadBtn.classList.contains("is-disabled")) {
+    event.preventDefault();
+  }
+});
 
 setMode(state.mode);
+renderImageChips();
+renderFileChips(elements.documentInput, elements.documentChips, "No documents selected yet.");
+renderJobDetail(null);
 if (state.apiBase) {
   elements.loginStatus.textContent = "Ready to connect.";
   refreshJobs().catch(console.error);

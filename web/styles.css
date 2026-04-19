@@ -17,6 +17,12 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -28,11 +34,29 @@ body {
     linear-gradient(180deg, #fcfaf5 0%, #f2ede4 100%);
 }
 
+body ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+body ::-webkit-scrollbar-thumb {
+  background: rgba(63, 51, 36, 0.22);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+body ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 320px minmax(420px, 1fr) minmax(420px, 1.1fr);
   gap: 18px;
   padding: 18px;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .panel {
@@ -42,8 +66,19 @@ body {
   box-shadow: var(--shadow);
   backdrop-filter: blur(14px);
   padding: 18px;
-  min-height: calc(100vh - 36px);
-  overflow: hidden;
+  height: calc(100vh - 36px);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.history-panel,
+.composer-panel,
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .panel-head,
@@ -90,8 +125,6 @@ h3 {
 .hint,
 small,
 .source-summary,
-.examples-card p,
-.artifacts-list a,
 .job-card p {
   color: var(--muted);
 }
@@ -99,7 +132,8 @@ small,
 input,
 textarea,
 select,
-button {
+button,
+a {
   font: inherit;
 }
 
@@ -118,14 +152,16 @@ textarea {
   resize: vertical;
 }
 
-button {
+button,
+a.detail-tab {
   border: 0;
   border-radius: 999px;
   cursor: pointer;
-  transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+  transition: transform 120ms ease, opacity 120ms ease, background 120ms ease, border-color 120ms ease;
 }
 
-button:hover {
+button:hover,
+a.detail-tab:hover {
   transform: translateY(-1px);
 }
 
@@ -153,6 +189,21 @@ button:hover {
   border-color: rgba(15, 118, 110, 0.3);
 }
 
+.detail-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.detail-tab--disabled,
+.detail-action.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: saturate(0.72);
+}
+
 .preset-row,
 .mode-tabs,
 .detail-tabs {
@@ -175,7 +226,8 @@ button:hover {
 .login-card,
 .meta-card,
 .upload-card,
-.job-card {
+.job-card,
+.finding-card {
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--panel-strong);
@@ -196,9 +248,66 @@ button:hover {
 .upload-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-height: 120px;
+  gap: 10px;
+  min-height: 144px;
   justify-content: center;
+}
+
+.upload-card--paste {
+  position: relative;
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.upload-card--paste:focus-visible,
+.upload-card--paste.is-focused,
+.upload-card--paste.is-dragover {
+  outline: none;
+  border-color: rgba(15, 118, 110, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.18);
+  background: linear-gradient(180deg, rgba(218, 240, 237, 0.56), rgba(255, 253, 248, 0.96));
+}
+
+.upload-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.upload-card__copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.upload-inline-button {
+  white-space: nowrap;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9em;
+  padding: 0.2em 0.45em;
+  border: 1px solid rgba(63, 51, 36, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: inset 0 -1px 0 rgba(63, 51, 36, 0.12);
+  font-size: 0.86em;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .upload-grid > * {
@@ -232,6 +341,15 @@ button:hover {
   background: #efe9de;
   border: 1px solid rgba(63, 51, 36, 0.08);
   font-size: 0.9rem;
+}
+
+.chip button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(63, 51, 36, 0.08);
+  color: var(--muted);
 }
 
 .login-card {
@@ -283,8 +401,6 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100vh - 340px);
-  overflow: auto;
 }
 
 .job-card {
@@ -352,10 +468,6 @@ button:hover {
 }
 
 .detail-view {
-  display: none;
-}
-
-.detail-view.active {
   display: block;
 }
 
@@ -366,8 +478,6 @@ button:hover {
 
 .finding-card {
   padding: 14px;
-  border-radius: 18px;
-  border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.88);
 }
 
@@ -375,60 +485,82 @@ button:hover {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: 10px;
 }
 
-.severity-critical { color: var(--danger); }
-.severity-major { color: #d97706; }
-.severity-minor { color: #2563eb; }
-.severity-suggestion { color: #7c3aed; }
-.severity-info { color: var(--muted); }
-
-.markdown-surface {
-  overflow: auto;
-  max-height: calc(100vh - 280px);
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 18px;
-  padding: 18px;
-}
-
-.markdown-surface table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.markdown-surface th,
-.markdown-surface td {
-  border: 1px solid var(--border);
-  padding: 8px;
-  vertical-align: top;
-}
-
-.artifacts-list {
+.finding-title {
   display: grid;
-  gap: 10px;
+  gap: 4px;
 }
 
-.artifacts-list a {
-  display: block;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid var(--border);
-  text-decoration: none;
+.finding-title .vi-copy {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.finding-block {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(63, 51, 36, 0.08);
+}
+
+.finding-label {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.finding-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.finding-text + .finding-text {
+  margin-top: 6px;
+}
+
+.finding-empty {
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px dashed rgba(63, 51, 36, 0.12);
+}
+
+.severity-critical {
+  color: var(--danger);
+}
+
+.severity-major {
+  color: #d97706;
+}
+
+.severity-minor {
+  color: #2563eb;
+}
+
+.severity-suggestion {
+  color: #7c3aed;
+}
+
+.severity-info {
+  color: var(--muted);
 }
 
 @media (max-width: 1240px) {
+  html,
+  body {
+    overflow: auto;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
   }
 
   .panel {
-    min-height: auto;
-  }
-
-  .job-list {
-    max-height: 360px;
+    height: auto;
+    overflow: visible;
   }
 
   .chips-section,
