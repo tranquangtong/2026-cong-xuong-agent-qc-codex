@@ -1,0 +1,4 @@
+interface:
+  display_name: "QC Reflect"
+  short_description: "Capture reusable QC lessons"
+  default_prompt: "Use $qc-reflect to turn this QA feedback or finding set into reusable lessons for future runs."

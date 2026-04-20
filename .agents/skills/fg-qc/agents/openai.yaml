@@ -1,0 +1,4 @@
+interface:
+  display_name: "Graphic QC"
+  short_description: "Review Figma links and screenshots"
+  default_prompt: "Use $fg-qc to review this Figma frame or screenshot set for layout, hierarchy, readability, contrast, and visual consistency."

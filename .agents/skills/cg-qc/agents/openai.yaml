@@ -1,0 +1,4 @@
+interface:
+  display_name: "Content QC"
+  short_description: "Review storyboard and text assets"
+  default_prompt: "Use $cg-qc to review this storyboard, subtitle file, or content source for grammar, British English, terminology, and learner-facing clarity."

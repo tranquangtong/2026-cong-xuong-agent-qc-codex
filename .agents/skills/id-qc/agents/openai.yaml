@@ -1,0 +1,4 @@
+interface:
+  display_name: "ID QC"
+  short_description: "Run browser-style e-learning QC"
+  default_prompt: "Use $id-qc to review this course for navigation, interaction coverage, quiz logic, accessibility, and on-screen text."

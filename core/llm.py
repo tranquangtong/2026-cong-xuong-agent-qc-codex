@@ -6,6 +6,8 @@ import mimetypes
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 
 def _is_test_key(value: str) -> bool:
     lowered = value.strip().lower()
@@ -37,6 +39,25 @@ def _extract_text(response: Any) -> str:
     return str(content)
 
 
+def _extract_openai_compatible_text(payload: dict[str, Any]) -> str:
+    choices = payload.get("choices", [])
+    if not choices:
+        raise ValueError("No choices returned by provider")
+    message = choices[0].get("message", {})
+    return _extract_text(message.get("content", ""))
+
+
+def _extract_gemini_text(payload: dict[str, Any]) -> str:
+    candidates = payload.get("candidates", [])
+    if not candidates:
+        raise ValueError("No candidates returned by Gemini")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    texts = [str(part.get("text", "")) for part in parts if isinstance(part, dict) and part.get("text")]
+    if texts:
+        return "\n".join(texts)
+    raise ValueError("Gemini response did not contain text parts")
+
+
 def get_chat_model(provider: str, model: str, api_key: str):
     if provider == "groq":
         from langchain_groq import ChatGroq
@@ -51,6 +72,84 @@ def get_chat_model(provider: str, model: str, api_key: str):
     raise ValueError(f"Unsupported provider: {provider}")
 
 
+def _invoke_groq_http(*, model: str, api_key: str, messages: list[dict[str, Any]]) -> str:
+    response = httpx.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "temperature": 0,
+            "messages": messages,
+        },
+        timeout=120,
+    )
+    response.raise_for_status()
+    return _extract_openai_compatible_text(response.json())
+
+
+def _data_url_to_gemini_part(image_url: str) -> dict[str, Any] | None:
+    if not image_url.startswith("data:") or ";base64," not in image_url:
+        return None
+    header, encoded = image_url.split(",", 1)
+    mime_type = header[5:].split(";")[0] or "image/png"
+    return {
+        "inline_data": {
+            "mime_type": mime_type,
+            "data": encoded,
+        }
+    }
+
+
+def _invoke_google_http(*, model: str, api_key: str, system_prompt: str, user_content: list[dict[str, Any]]) -> str:
+    parts: list[dict[str, Any]] = []
+    for item in user_content:
+        item_type = item.get("type")
+        if item_type == "text":
+            parts.append({"text": str(item.get("text", ""))})
+            continue
+        if item_type == "image_url":
+            image_url = item.get("image_url", {}).get("url", "")
+            gemini_part = _data_url_to_gemini_part(str(image_url))
+            if gemini_part:
+                parts.append(gemini_part)
+
+    response = httpx.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        params={"key": api_key},
+        headers={"Content-Type": "application/json"},
+        json={
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {"temperature": 0},
+        },
+        timeout=120,
+    )
+    response.raise_for_status()
+    return _extract_gemini_text(response.json())
+
+
+def _invoke_http_model(
+    *,
+    provider: str,
+    model: str,
+    api_key: str,
+    system_prompt: str,
+    user_content: list[dict[str, Any]],
+) -> str:
+    if provider == "groq":
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content if len(user_content) > 1 or user_content[0]["type"] != "text" else user_content[0]["text"]},
+        ]
+        return _invoke_groq_http(model=model, api_key=api_key, messages=messages)
+    if provider == "google":
+        return _invoke_google_http(model=model, api_key=api_key, system_prompt=system_prompt, user_content=user_content)
+    raise ValueError(f"Unsupported provider: {provider}")
+
+
 def invoke_text_model(
     *,
     provider: str,
@@ -59,9 +158,18 @@ def invoke_text_model(
     system_prompt: str,
     user_prompt: str,
 ) -> str:
-    chat_model = get_chat_model(provider, model, api_key)
-    response = chat_model.invoke([("system", system_prompt), ("human", user_prompt)])
-    return _extract_text(response)
+    try:
+        chat_model = get_chat_model(provider, model, api_key)
+        response = chat_model.invoke([("system", system_prompt), ("human", user_prompt)])
+        return _extract_text(response)
+    except ModuleNotFoundError:
+        return _invoke_http_model(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            system_prompt=system_prompt,
+            user_content=[{"type": "text", "text": user_prompt}],
+        )
 
 
 def _image_message_part(image_path: str) -> dict[str, Any] | None:
@@ -94,16 +202,25 @@ def invoke_multimodal_model(
     user_prompt: str,
     image_paths: list[str],
 ) -> str:
-    from langchain_core.messages import HumanMessage, SystemMessage
-
-    chat_model = get_chat_model(provider, model, api_key)
     content: list[dict[str, Any]] = [{"type": "text", "text": user_prompt}]
     for image_path in image_paths:
         image_part = _image_message_part(image_path)
         if image_part:
             content.append(image_part)
-    response = chat_model.invoke([SystemMessage(content=system_prompt), HumanMessage(content=content)])
-    return _extract_text(response)
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        chat_model = get_chat_model(provider, model, api_key)
+        response = chat_model.invoke([SystemMessage(content=system_prompt), HumanMessage(content=content)])
+        return _extract_text(response)
+    except ModuleNotFoundError:
+        return _invoke_http_model(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            system_prompt=system_prompt,
+            user_content=content,
+        )
 
 
 def parse_json_object(raw_text: str) -> dict[str, Any]:
