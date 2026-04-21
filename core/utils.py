@@ -133,6 +133,115 @@ def _count_ahead_of_upstream(project_root: Path, upstream: str | None) -> int:
         return 0
 
 
+UPGIT_EXCLUDED_PATHS = {
+    "docs/communication.md",
+}
+
+UPGIT_EXCLUDED_PREFIXES = (
+    "outputs/",
+    ".web-runtime/",
+)
+
+
+def _is_upgit_excluded(path: str) -> bool:
+    normalized = path.strip()
+    if not normalized:
+        return False
+    if normalized in UPGIT_EXCLUDED_PATHS:
+        return True
+    return any(normalized.startswith(prefix) for prefix in UPGIT_EXCLUDED_PREFIXES)
+
+
+def _parse_name_status_lines(output: str) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("\t")
+        status = parts[0]
+        paths = [part for part in parts[1:] if part]
+        primary_path = paths[-1] if paths else ""
+        entries.append(
+            {
+                "status": status,
+                "paths": paths,
+                "path": primary_path,
+                "display": line,
+            }
+        )
+    return entries
+
+
+def _collect_staged_changes(project_root: Path) -> list[dict[str, object]]:
+    result = _run_git_command(project_root, ["diff", "--cached", "--name-status"], check=False)
+    return _parse_name_status_lines(result.stdout)
+
+
+def _derive_change_focus(paths: list[str]) -> list[str]:
+    focus: list[str] = []
+
+    def add(label: str) -> None:
+        if label not in focus:
+            focus.append(label)
+
+    for path in paths:
+        if "upgit" in path:
+            add("upgit")
+        elif "cleanup" in path:
+            add("cleanup")
+        elif path == "main.py":
+            add("cli")
+        elif path.startswith(".agents/skills/"):
+            add("skills")
+        elif path.startswith("tests/"):
+            add("tests")
+        elif path.startswith("docs/") or path in {"AGENTS.md", "claude.md", "README.md"}:
+            add("docs")
+        elif path.startswith("core/"):
+            add("core")
+        elif path.startswith("agents/"):
+            add("agents")
+        elif path.startswith("api/"):
+            add("api")
+        elif path.startswith("web/"):
+            add("web")
+        else:
+            head = path.split("/", 1)[0] if "/" in path else path
+            add(head.replace("_", "-"))
+
+    return focus
+
+
+def _generate_upgit_commit_message(staged_changes: list[dict[str, object]]) -> str:
+    paths = [str(item["path"]) for item in staged_changes if item.get("path")]
+    if not paths:
+        return "chore: sync project updates"
+
+    focus = _derive_change_focus(paths)
+    path_set = set(paths)
+
+    if "upgit" in focus and ("cli" in focus or "core" in focus):
+        return "feat: refine upgit workflow"
+    if "cleanup" in focus and ("cli" in focus or "core" in focus):
+        return "feat: refine cleanup workflow"
+    if focus[:2] == ["docs"] or set(focus) == {"docs"}:
+        return "docs: update project guidance"
+    if set(focus).issubset({"tests"}):
+        return "test: update workflow coverage"
+    if "skills" in focus and set(focus).issubset({"skills", "docs"}):
+        skill_names = sorted({path.split("/")[2] for path in path_set if path.startswith(".agents/skills/") and len(path.split("/")) > 2})
+        if len(skill_names) == 1:
+            return f"feat: add {skill_names[0]} skill"
+        if skill_names:
+            return "feat: update repo skills"
+    if {"cli", "core", "tests"}.issubset(set(focus)):
+        return "feat: update CLI workflow handling"
+
+    summary = ", ".join(focus[:3]) if focus else "project"
+    return f"chore: update {summary}"
+
+
 def upgit_project(project_root: Path, commit_message: str | None = None) -> dict[str, object]:
     cleanup_summary = cleanup_project(project_root)
 
@@ -151,11 +260,22 @@ def upgit_project(project_root: Path, commit_message: str | None = None) -> dict
     remotes = {line.strip() for line in remote_probe.stdout.splitlines() if line.strip()}
 
     _run_git_command(project_root, ["add", "-A"])
-    staged_changes = [line for line in _run_git_command(project_root, ["diff", "--cached", "--name-status"], check=False).stdout.splitlines() if line.strip()]
+    initial_staged_changes = _collect_staged_changes(project_root)
+    excluded_paths = sorted(
+        {
+            path
+            for item in initial_staged_changes
+            for path in item["paths"]
+            if isinstance(path, str) and _is_upgit_excluded(path)
+        }
+    )
+    if excluded_paths:
+        _run_git_command(project_root, ["restore", "--staged", "--", *excluded_paths], check=False)
+    staged_changes = _collect_staged_changes(project_root)
 
     committed = False
     commit_sha: str | None = None
-    final_message = (commit_message or "").strip() or "chore: sync project updates"
+    final_message = (commit_message or "").strip() or _generate_upgit_commit_message(staged_changes)
 
     if staged_changes:
         commit_result = _run_git_command(project_root, ["commit", "-m", final_message], check=False)
@@ -178,6 +298,8 @@ def upgit_project(project_root: Path, commit_message: str | None = None) -> dict
             "commit_sha": None,
             "staged_changes": [],
             "staged_change_count": 0,
+            "excluded_paths": excluded_paths[:10],
+            "excluded_path_count": len(excluded_paths),
             "ahead_count": 0,
         }
 
@@ -210,7 +332,9 @@ def upgit_project(project_root: Path, commit_message: str | None = None) -> dict
         "pushed": True,
         "commit_message": final_message if committed else None,
         "commit_sha": commit_sha,
-        "staged_changes": staged_changes[:10],
+        "staged_changes": [str(item["display"]) for item in staged_changes[:10]],
         "staged_change_count": len(staged_changes),
+        "excluded_paths": excluded_paths[:10],
+        "excluded_path_count": len(excluded_paths),
         "ahead_count": _count_ahead_of_upstream(project_root, upstream),
     }

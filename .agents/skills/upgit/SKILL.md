@@ -21,15 +21,16 @@ Use this workflow when the user wants one command that tidies the repo and then 
 The `/upgit` command should:
 
 - run cleanup first
-- stage the current workspace with `git add -A`
-- create a commit when staged changes exist
+- avoid runtime/generated paths such as `docs/communication.md` and `outputs/` by default
+- create a commit only from the remaining relevant workspace changes
 - push to the current upstream when configured
 - fall back to `origin/<branch>` only when no upstream exists and `origin` is available
+- auto-generate a meaningful commit message when the user does not provide one
 - report clearly when there is nothing new to commit or push
 
 ## Safety Notes
 
-This workflow is intentionally broad: it stages the current working tree. Do not describe it as selective or scoped to one file unless the user asked for a narrower git flow and the implementation actually supports that.
+This workflow is narrower than a raw `git add -A`, but it is still repo-wide within the non-excluded paths. Do not describe it as a one-file or hand-curated commit unless the implementation actually supports that scope.
 
 If push fails after commit creation, report that the commit exists locally and was not pushed successfully.
 

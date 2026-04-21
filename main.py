@@ -101,6 +101,13 @@ def main() -> int:
                 print(f"... and {len(cleanup_summary['removed_paths']) - len(preview)} more")
 
         if summary["status"] == "no_changes":
+            if summary["excluded_paths"]:
+                print("Skipped runtime/generated paths:")
+                for item in summary["excluded_paths"]:
+                    print(f"- {item}")
+                remaining = summary["excluded_path_count"] - len(summary["excluded_paths"])
+                if remaining > 0:
+                    print(f"... and {remaining} more")
             print("Git sync skipped: no staged or unpushed changes remained after cleanup.")
             return 0
 
@@ -108,6 +115,13 @@ def main() -> int:
             print(f"Committed {summary['commit_sha']}: {summary['commit_message']}")
         else:
             print(f"No new commit created; pushing existing local commit(s) on {summary['branch']}.")
+        if summary["excluded_paths"]:
+            print("Skipped runtime/generated paths:")
+            for item in summary["excluded_paths"]:
+                print(f"- {item}")
+            remaining = summary["excluded_path_count"] - len(summary["excluded_paths"])
+            if remaining > 0:
+                print(f"... and {remaining} more")
         if summary["staged_changes"]:
             print("Included changes:")
             for item in summary["staged_changes"]:

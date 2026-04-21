@@ -235,6 +235,6 @@ Artifact expectation for content / graphic QC:
 Trong Codex chat, co the goi workflow tuong ung bang `$cleanup` de chay cung logic don dep nay.
 
 ## Upgit
-`/upgit` chay `/cleanup` truoc, sau do stage workspace hien tai, tao commit neu co thay doi moi, va push len nhanh git hien tai. Co the truyen commit message ngay sau lenh, vi du: `/upgit chore: add upgit command`.
+`/upgit` chay `/cleanup` truoc, sau do stage workspace lien quan, bo qua mac dinh cac file runtime/generated nhu `docs/communication.md` va `outputs/`, tao commit neu co thay doi moi, va push len nhanh git hien tai. Neu khong truyen message, lenh se tu sinh commit message phu hop. Co the truyen commit message ngay sau lenh, vi du: `/upgit chore: add upgit command`.
 
 Trong Codex chat, co the goi workflow tuong ung bang `$upgit`.

@@ -366,7 +366,8 @@ class WorkflowTests(unittest.TestCase):
                 ("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"): CompletedProcess(cmd, 0, "origin/main\n", ""),
                 ("git", "remote"): CompletedProcess(cmd, 0, "origin\n", ""),
                 ("git", "add", "-A"): CompletedProcess(cmd, 0, "", ""),
-                ("git", "diff", "--cached", "--name-status"): CompletedProcess(cmd, 0, "M\tmain.py\nD\tcore/__pycache__/temp.pyc\n", ""),
+                ("git", "diff", "--cached", "--name-status"): CompletedProcess(cmd, 0, "M\tmain.py\nM\tdocs/communication.md\nD\tcore/__pycache__/temp.pyc\n", ""),
+                ("git", "restore", "--staged", "--", "docs/communication.md"): CompletedProcess(cmd, 0, "", ""),
                 ("git", "commit", "-m", "feat: sync repo"): CompletedProcess(cmd, 0, "[main abc123] feat: sync repo\n", ""),
                 ("git", "rev-parse", "--short", "HEAD"): CompletedProcess(cmd, 0, "abc123\n", ""),
                 ("git", "rev-list", "--left-right", "--count", "origin/main...HEAD"): CompletedProcess(cmd, 0, "0 1\n", ""),
@@ -388,7 +389,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(summary["push_target"], "origin/main")
         self.assertGreaterEqual(summary["cleanup_summary"]["removed_count"], 1)
         self.assertFalse(cache_dir.exists())
+        self.assertEqual(summary["excluded_paths"], ["docs/communication.md"])
         self.assertIn(["git", "add", "-A"], commands)
+        self.assertIn(["git", "restore", "--staged", "--", "docs/communication.md"], commands)
         self.assertIn(["git", "push"], commands)
 
     def test_upgit_returns_no_changes_when_branch_is_clean(self) -> None:
@@ -414,6 +417,44 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(summary["committed"])
         self.assertFalse(summary["pushed"])
         self.assertEqual(summary["staged_change_count"], 0)
+
+    def test_upgit_autogenerates_meaningful_commit_message_and_skips_runtime_paths(self) -> None:
+        state = {"restore_called": False}
+
+        def fake_run(cmd: list[str], cwd: Path, text: bool, capture_output: bool, check: bool) -> CompletedProcess[str]:
+            if tuple(cmd) == ("git", "rev-parse", "--is-inside-work-tree"):
+                return CompletedProcess(cmd, 0, "true\n", "")
+            if tuple(cmd) == ("git", "branch", "--show-current"):
+                return CompletedProcess(cmd, 0, "main\n", "")
+            if tuple(cmd) == ("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"):
+                return CompletedProcess(cmd, 0, "origin/main\n", "")
+            if tuple(cmd) == ("git", "remote"):
+                return CompletedProcess(cmd, 0, "origin\n", "")
+            if tuple(cmd) == ("git", "add", "-A"):
+                return CompletedProcess(cmd, 0, "", "")
+            if tuple(cmd) == ("git", "diff", "--cached", "--name-status"):
+                if state["restore_called"]:
+                    return CompletedProcess(cmd, 0, "M\tmain.py\nM\tcore/utils.py\nM\ttests/test_workflow.py\n", "")
+                return CompletedProcess(cmd, 0, "M\tmain.py\nM\tcore/utils.py\nM\ttests/test_workflow.py\nM\tdocs/communication.md\nA\toutputs/sample/report.md\n", "")
+            if tuple(cmd) == ("git", "restore", "--staged", "--", "docs/communication.md", "outputs/sample/report.md"):
+                state["restore_called"] = True
+                return CompletedProcess(cmd, 0, "", "")
+            if tuple(cmd) == ("git", "commit", "-m", "feat: update CLI workflow handling"):
+                return CompletedProcess(cmd, 0, "[main def456] feat: update CLI workflow handling\n", "")
+            if tuple(cmd) == ("git", "rev-parse", "--short", "HEAD"):
+                return CompletedProcess(cmd, 0, "def456\n", "")
+            if tuple(cmd) == ("git", "rev-list", "--left-right", "--count", "origin/main...HEAD"):
+                return CompletedProcess(cmd, 0, "0 1\n", "")
+            if tuple(cmd) == ("git", "push"):
+                return CompletedProcess(cmd, 0, "ok\n", "")
+            raise AssertionError(f"Unexpected git command: {cmd}")
+
+        with patch("core.utils.subprocess.run", side_effect=fake_run):
+            summary = upgit_project(self.temp_dir)
+
+        self.assertEqual(summary["commit_message"], "feat: update CLI workflow handling")
+        self.assertEqual(summary["excluded_paths"], ["docs/communication.md", "outputs/sample/report.md"])
+        self.assertEqual(summary["staged_changes"], ["M\tmain.py", "M\tcore/utils.py", "M\ttests/test_workflow.py"])
 
 
 if __name__ == "__main__":

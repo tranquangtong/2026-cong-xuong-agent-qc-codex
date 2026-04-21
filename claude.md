@@ -28,6 +28,7 @@ For Codex chat workflows, the repo now also ships repo-local skills under [.agen
 - `main.py` supports `/id`, `/cg`, `/fg`, `/reflect`, `/cleanup`, and `/upgit`.
 - In Codex chat, the same cleanup utility can be invoked via `$cleanup`.
 - In Codex chat, the git sync utility can be invoked via `$upgit`.
+- `/upgit` now skips runtime/generated paths such as `docs/communication.md` and `outputs/` by default, and auto-generates a commit message when the user does not provide one.
 - Requests may skip the router via explicit commands or auto-detect.
 - `core/graph.py` resolves content sources, runs specialist agents, then runs reflection.
 - Every QA run writes a fresh bundle to `outputs/<timestamp>_<slug>_<id>/report.md`.

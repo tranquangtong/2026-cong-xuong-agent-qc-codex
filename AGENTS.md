@@ -30,6 +30,13 @@ The project utility mapping is:
 - `/cleanup` -> cleanup cache and temp files safely
 - `/upgit` -> cleanup, commit current changes, and push to git remote
 
+Default `/upgit` behavior:
+
+- runs cleanup first
+- skips runtime/generated paths such as `docs/communication.md` and `outputs/` by default
+- auto-generates a commit message when none is provided
+- pushes only the remaining relevant staged changes
+
 When working in Codex chat, prefer the workflow skills:
 
 - `$id-qc`
