@@ -231,3 +231,10 @@ Artifact expectation for content / graphic QC:
 
 ## Cleanup
 `/cleanup` dung de don dep cache va temp files cua project. Lenh nay khong duoc xoa source code, `.venv`, hoac cac report bundle hop le trong `outputs/`.
+
+Trong Codex chat, co the goi workflow tuong ung bang `$cleanup` de chay cung logic don dep nay.
+
+## Upgit
+`/upgit` chay `/cleanup` truoc, sau do stage workspace hien tai, tao commit neu co thay doi moi, va push len nhanh git hien tai. Co the truyen commit message ngay sau lenh, vi du: `/upgit chore: add upgit command`.
+
+Trong Codex chat, co the goi workflow tuong ung bang `$upgit`.

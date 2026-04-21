@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cleanup"
+  short_description: "Clear cache and temp files safely"
+  default_prompt: "Use $cleanup to run the project cleanup flow and remove cache or temporary files without deleting source files, .venv, or valid output bundles."

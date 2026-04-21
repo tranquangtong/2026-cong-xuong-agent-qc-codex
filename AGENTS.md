@@ -25,12 +25,19 @@ The canonical mode mapping is:
 - `/cg` -> `content`
 - `/reflect` -> `reflect`
 
+The project utility mapping is:
+
+- `/cleanup` -> cleanup cache and temp files safely
+- `/upgit` -> cleanup, commit current changes, and push to git remote
+
 When working in Codex chat, prefer the workflow skills:
 
 - `$id-qc`
 - `$fg-qc`
 - `$cg-qc`
 - `$qc-reflect`
+- `$cleanup`
+- `$upgit`
 
 Use explicit workflow skills when the user clearly knows the target mode. If the request is ambiguous, reason from source type and stated intent before choosing a workflow.
 
@@ -40,6 +47,8 @@ The current repo-local skill folders are:
 - `.agents/skills/fg-qc`
 - `.agents/skills/cg-qc`
 - `.agents/skills/qc-reflect`
+- `.agents/skills/cleanup`
+- `.agents/skills/upgit`
 
 ## Routing Rules
 
@@ -50,6 +59,8 @@ Apply these routing rules consistently:
 - Storyboard copy, subtitles, spelling, grammar, terminology, and document artifacts such as `pdf`, `csv`, and `docx` route to `content`
 - Figma links that are explicitly about storyboard copy or text QA usually require both `graphic` and `content`, but `content` must only claim text coverage if the frame text is actually resolved
 - Manual QA feedback and reusable process lessons route to `reflect`
+- Cache, temp-file, or workspace cleanup requests route to the `cleanup` skill rather than a QA mode
+- Git save, commit, push, or repository sync requests route to the `upgit` skill rather than a QA mode
 
 If a request mixes multiple scopes, keep the boundaries explicit rather than collapsing everything into one vague review.
 
@@ -93,16 +104,4 @@ Translation behavior:
 This repo may be used in environments with or without plugins and MCP tools.
 
 - If browser tooling is available, use it for `id` work that requires real interaction coverage
-- If Figma tooling is available, use it for `graphic` work and for pre-resolving text needed by `content`
-- If those tools are unavailable, continue with the best evidence on hand but explicitly report what could not be verified
-- Do not block a useful review just because the perfect tool is unavailable, but do not blur the line between inferred review and evidence-backed review
-- If the current Python interpreter is missing optional LangChain provider adapters, the repo now falls back to direct provider HTTP calls in `core/llm.py` so text and translation flows can still run
-
-## Canonical Invocations
-
-Use these as the default mental model in new chats:
-
-- `$id-qc Review this Rise course for navigation, quiz logic, and accessibility`
-- `$fg-qc Review this Figma frame for layout, contrast, and hierarchy`
-- `$cg-qc Review this storyboard.csv for grammar, British English, and terminology consistency`
-- `$qc-reflect Turn this QC feedback into reusable lessons for future runs`
+- If Figma tooling is available, use it for `

@@ -6,7 +6,7 @@ from pathlib import Path
 from core.config import AppConfig, ConfigError, get_project_root
 from core.content_sources import extract_figma_links, has_document_source_hint
 from core.graph import invoke_workflow
-from core.utils import cleanup_project, ensure_runtime_directories
+from core.utils import cleanup_project, ensure_runtime_directories, upgit_project
 
 
 COMMAND_TO_AGENT = {
@@ -82,6 +82,40 @@ def main() -> int:
                 print(f"- {item}")
             if len(summary["removed_paths"]) > len(preview):
                 print(f"... and {len(summary['removed_paths']) - len(preview)} more")
+        return 0
+    if raw_text.lower().startswith("/upgit"):
+        commit_message = raw_text[len("/upgit") :].strip() or None
+        try:
+            summary = upgit_project(project_root, commit_message=commit_message)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+
+        cleanup_summary = summary["cleanup_summary"]
+        print(f"Cleanup complete: removed {cleanup_summary['removed_count']} temp/cache item(s).")
+        if cleanup_summary["removed_paths"]:
+            preview = cleanup_summary["removed_paths"][:10]
+            print("Removed:")
+            for item in preview:
+                print(f"- {item}")
+            if len(cleanup_summary["removed_paths"]) > len(preview):
+                print(f"... and {len(cleanup_summary['removed_paths']) - len(preview)} more")
+
+        if summary["status"] == "no_changes":
+            print("Git sync skipped: no staged or unpushed changes remained after cleanup.")
+            return 0
+
+        if summary["committed"]:
+            print(f"Committed {summary['commit_sha']}: {summary['commit_message']}")
+        else:
+            print(f"No new commit created; pushing existing local commit(s) on {summary['branch']}.")
+        if summary["staged_changes"]:
+            print("Included changes:")
+            for item in summary["staged_changes"]:
+                print(f"- {item}")
+            remaining = summary["staged_change_count"] - len(summary["staged_changes"])
+            if remaining > 0:
+                print(f"... and {remaining} more")
+        print(f"Pushed to {summary['push_target']}.")
         return 0
 
     bypass_agents = explicit_agents or auto_detect_agents(normalized_text, args.image, project_root)

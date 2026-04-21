@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import shutil
+from subprocess import CompletedProcess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from core.content_sources import resolve_content_sources
@@ -12,7 +14,7 @@ from core.config import AppConfig
 from core.graph import invoke_workflow
 from core.knowledge import get_knowledge_context, maybe_consolidate
 from core.state import merge_findings
-from core.utils import cleanup_project, ensure_text_file
+from core.utils import cleanup_project, ensure_text_file, upgit_project
 from main import auto_detect_agents, normalize_command
 
 
@@ -348,6 +350,70 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(loose_output.exists())
         self.assertTrue(bundle_dir.exists())
         self.assertTrue((bundle_dir / "report.md").exists())
+
+    def test_upgit_runs_cleanup_commit_and_push(self) -> None:
+        cache_dir = self.temp_dir / "core" / "__pycache__"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        (cache_dir / "temp.pyc").write_bytes(b"123")
+
+        commands: list[list[str]] = []
+
+        def fake_run(cmd: list[str], cwd: Path, text: bool, capture_output: bool, check: bool) -> CompletedProcess[str]:
+            commands.append(cmd)
+            mapping = {
+                ("git", "rev-parse", "--is-inside-work-tree"): CompletedProcess(cmd, 0, "true\n", ""),
+                ("git", "branch", "--show-current"): CompletedProcess(cmd, 0, "main\n", ""),
+                ("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"): CompletedProcess(cmd, 0, "origin/main\n", ""),
+                ("git", "remote"): CompletedProcess(cmd, 0, "origin\n", ""),
+                ("git", "add", "-A"): CompletedProcess(cmd, 0, "", ""),
+                ("git", "diff", "--cached", "--name-status"): CompletedProcess(cmd, 0, "M\tmain.py\nD\tcore/__pycache__/temp.pyc\n", ""),
+                ("git", "commit", "-m", "feat: sync repo"): CompletedProcess(cmd, 0, "[main abc123] feat: sync repo\n", ""),
+                ("git", "rev-parse", "--short", "HEAD"): CompletedProcess(cmd, 0, "abc123\n", ""),
+                ("git", "rev-list", "--left-right", "--count", "origin/main...HEAD"): CompletedProcess(cmd, 0, "0 1\n", ""),
+                ("git", "push"): CompletedProcess(cmd, 0, "Everything up-to-date\n", ""),
+            }
+            result = mapping.get(tuple(cmd))
+            if result is None:
+                raise AssertionError(f"Unexpected git command: {cmd}")
+            return result
+
+        with patch("core.utils.subprocess.run", side_effect=fake_run):
+            summary = upgit_project(self.temp_dir, commit_message="feat: sync repo")
+
+        self.assertEqual(summary["status"], "pushed")
+        self.assertTrue(summary["committed"])
+        self.assertTrue(summary["pushed"])
+        self.assertEqual(summary["commit_sha"], "abc123")
+        self.assertEqual(summary["commit_message"], "feat: sync repo")
+        self.assertEqual(summary["push_target"], "origin/main")
+        self.assertGreaterEqual(summary["cleanup_summary"]["removed_count"], 1)
+        self.assertFalse(cache_dir.exists())
+        self.assertIn(["git", "add", "-A"], commands)
+        self.assertIn(["git", "push"], commands)
+
+    def test_upgit_returns_no_changes_when_branch_is_clean(self) -> None:
+        def fake_run(cmd: list[str], cwd: Path, text: bool, capture_output: bool, check: bool) -> CompletedProcess[str]:
+            mapping = {
+                ("git", "rev-parse", "--is-inside-work-tree"): CompletedProcess(cmd, 0, "true\n", ""),
+                ("git", "branch", "--show-current"): CompletedProcess(cmd, 0, "main\n", ""),
+                ("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"): CompletedProcess(cmd, 0, "origin/main\n", ""),
+                ("git", "remote"): CompletedProcess(cmd, 0, "origin\n", ""),
+                ("git", "add", "-A"): CompletedProcess(cmd, 0, "", ""),
+                ("git", "diff", "--cached", "--name-status"): CompletedProcess(cmd, 0, "", ""),
+                ("git", "rev-list", "--left-right", "--count", "origin/main...HEAD"): CompletedProcess(cmd, 0, "0 0\n", ""),
+            }
+            result = mapping.get(tuple(cmd))
+            if result is None:
+                raise AssertionError(f"Unexpected git command: {cmd}")
+            return result
+
+        with patch("core.utils.subprocess.run", side_effect=fake_run):
+            summary = upgit_project(self.temp_dir)
+
+        self.assertEqual(summary["status"], "no_changes")
+        self.assertFalse(summary["committed"])
+        self.assertFalse(summary["pushed"])
+        self.assertEqual(summary["staged_change_count"], 0)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Upgit"
+  short_description: "Clean, commit, and push the repo"
+  default_prompt: "Use $upgit to run project cleanup, save the current workspace as a git commit, and push the active branch to the connected GitHub repository."
