@@ -79,6 +79,7 @@ def invoke_workflow(
     project_root: Path,
     config,
     content_sources: list[ContentSource] | None = None,
+    output_dir: Path | None = None,
 ) -> AgentState:
     resolved_sources = resolve_content_sources(project_root, user_text, content_sources)
     state: AgentState = {
@@ -92,6 +93,7 @@ def invoke_workflow(
         "image_paths": image_paths,
         "project_root": project_root,
         "config": config,
+        "output_dir": str(output_dir) if output_dir else "",
         "content_sources": resolved_sources,
         "resolved_content_text": build_resolved_content_text(resolved_sources, user_text),
     }
@@ -110,6 +112,7 @@ def invoke_workflow(
             state.get("raw_text", state.get("user_text", "")),
             state.get("config"),
             state.get("content_sources", []),
+            Path(state["output_dir"]) if state.get("output_dir") else None,
         )
         state["report_path"] = str(report_path)
         return state
@@ -135,6 +138,7 @@ def invoke_workflow(
         state.get("raw_text", state.get("user_text", "")),
         state.get("config"),
         state.get("content_sources", []),
+        Path(state["output_dir"]) if state.get("output_dir") else None,
     )
     state["report_path"] = str(report_path)
     return state

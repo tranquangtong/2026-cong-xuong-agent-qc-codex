@@ -76,6 +76,7 @@ class AgentState(TypedDict, total=False):
     image_paths: list[str]
     project_root: Any
     config: Any
+    output_dir: str
     report_path: str
     reflection_summary: str
     content_sources: list[ContentSource]

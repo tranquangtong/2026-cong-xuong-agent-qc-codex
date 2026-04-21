@@ -13,8 +13,9 @@ from core.content_sources import resolve_content_sources
 from core.config import AppConfig
 from core.graph import invoke_workflow
 from core.knowledge import get_knowledge_context, maybe_consolidate
+from core.reporting import generate_markdown_report
 from core.state import merge_findings
-from core.utils import cleanup_project, ensure_text_file, upgit_project
+from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
 from main import auto_detect_agents, normalize_command
 
 
@@ -205,6 +206,27 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("Stored manual feedback", result["reflection_summary"])
         content = (self.temp_dir / "knowledge" / "general" / "human_feedback_lessons.md").read_text(encoding="utf-8")
         self.assertIn("Section 3 markers", content)
+
+    def test_generate_markdown_report_reuses_supplied_output_dir(self) -> None:
+        output_dir = make_output_bundle_dir(self.temp_dir, "graphic qa bundle")
+        artifacts_dir = output_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        (artifacts_dir / "preview.png").write_text("placeholder", encoding="utf-8")
+
+        report_path = generate_markdown_report(
+            project_root=self.temp_dir,
+            findings=[],
+            routing_reason="Graphic QA test run.",
+            request_text="/fg test",
+            config=self.config,
+            content_sources=[],
+            output_dir=output_dir,
+        )
+
+        self.assertEqual(report_path.parent, output_dir)
+        self.assertTrue((artifacts_dir / "preview.png").exists())
+        output_bundles = [path for path in (self.temp_dir / "outputs").iterdir() if path.is_dir()]
+        self.assertEqual(len(output_bundles), 1)
 
     def test_router_runs_both_specialists_for_generic_prompt(self) -> None:
         result = invoke_workflow(

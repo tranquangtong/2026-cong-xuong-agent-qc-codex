@@ -3,7 +3,7 @@
 This repository is a multi-agent QC factory for e-learning review. The working modes are:
 
 - `id`: instructional design QA for browser-like course flows, interactions, quiz logic, navigation, accessibility, and learner-facing on-screen text
-- `graphic`: visual QA for Figma links and screenshots, including layout, spacing, hierarchy, readability, and WCAG 2.2 visual risks
+- `graphic`: visual QA for Figma links, screenshots, and rendered design artifacts, including layout, spacing, hierarchy, readability, and WCAG 2.2 visual risks
 - `content`: content QA for storyboard copy, subtitles, grammar, spelling, British English, terminology, and learner-facing clarity
 - `reflect`: lesson capture from feedback or findings so future QC passes improve over time
 
@@ -62,7 +62,7 @@ The current repo-local skill folders are:
 Apply these routing rules consistently:
 
 - Articulate, Rise, Storyline, SCORM, browser-flow, interaction, quiz, knowledge-check, navigation, and accessibility requests route to `id`
-- Figma links and screenshots route to `graphic`
+- Figma links, screenshots, and rendered design artifacts such as poster exports or PDF previews route to `graphic`
 - Storyboard copy, subtitles, spelling, grammar, terminology, and document artifacts such as `pdf`, `csv`, and `docx` route to `content`
 - Figma links that are explicitly about storyboard copy or text QA usually require both `graphic` and `content`, but `content` must only claim text coverage if the frame text is actually resolved
 - Manual QA feedback and reusable process lessons route to `reflect`
@@ -96,9 +96,9 @@ All reports and QC summaries should follow these expectations:
 - Distinguish clearly between confirmed defects, review limitations, and follow-up suggestions
 - Prefer honest coverage notes over overclaiming that a review is complete
 
-For content and graphic QA, preserve source cues such as page, row, paragraph, frame, screenshot, or section when the evidence supports them.
+For content and graphic QA, preserve source cues such as page, row, paragraph, frame, screenshot, node, or section when the evidence supports them.
 
-If the review is limited by missing tooling, partial screenshots, unresolved Figma text, or blocked access, the report must still be exported and must say exactly what was not verified.
+If the review is limited by missing tooling, partial screenshots, unresolved Figma text, blocked access, or rate-limited Figma MCP usage, the report must still be exported and must say exactly what was not verified.
 
 Translation behavior:
 
@@ -106,9 +106,20 @@ Translation behavior:
 - If LangChain provider adapters are missing in the current interpreter, the LLM layer falls back to direct HTTP calls for Groq and Gemini
 - If no translation-capable provider is usable, the Vietnamese section must explicitly say translation was unavailable instead of silently reusing English text
 
+Artifact behavior:
+
+- Every QC run should keep `report.md` and any generated or copied artifacts in the same output bundle
+- Preferred structure is `outputs/<bundle>/report.md` plus `outputs/<bundle>/artifacts/...`
+- Do not create a second output bundle for the same QC pass just because artifacts were prepared before report generation
+
 ## Tooling Guidance
 
 This repo may be used in environments with or without plugins and MCP tools.
 
 - If browser tooling is available, use it for `id` work that requires real interaction coverage
-- If Figma tooling is available, use it for `
+- If Figma tooling is available, use it for `graphic` work that needs live frame or node inspection
+- If Figma MCP is unavailable, blocked, or rate-limited, fall back to exported screenshots, PDF renders, or other image artifacts rather than pretending the raw link was inspected successfully
+- For `graphic` QA, rendered screenshots and exported frames are stronger evidence than a raw link alone
+- For `content` QA, raw Figma links are unresolved unless text has already been pre-resolved into `content_sources`
+- For document-based review, supported ingestion remains `pdf`, `csv`, and `docx`
+- When screenshots or rendered previews are created during review, store them in the same output bundle as the final `report.md`

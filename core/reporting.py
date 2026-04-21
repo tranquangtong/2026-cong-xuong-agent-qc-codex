@@ -181,8 +181,9 @@ def generate_markdown_report(
     request_text: str = "",
     config=None,
     content_sources: list[ContentSource] | None = None,
+    output_dir: Path | None = None,
 ) -> Path:
-    output_dir = make_output_bundle_dir(project_root, request_text or "qc-run")
+    output_dir = output_dir or make_output_bundle_dir(project_root, request_text or "qc-run")
     report_path = output_dir / make_report_name()
     source_summary = summarize_content_sources(content_sources or [])
     translation_payload = _translate_report_payload(project_root, findings, routing_reason, source_summary, config)
