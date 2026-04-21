@@ -1,0 +1,13 @@
+- generic [ref=e1]:
+  - dialog "Cookie Consent Banner" [ref=e2]:
+    - button "Close this dialog" [active] [ref=e3] [cursor=pointer]:
+      - img "Close this dialog" [ref=e4]
+    - generic [ref=e5]:
+      - generic [ref=e6]: This website utilizes technologies such as cookies to enable essential site functionality, as well as for analytics, personalization, and targeted advertising. You may change your settings at any time or accept the default settings. You may close this banner to continue with only essential cookies.
+      - link "Privacy Notice" [ref=e7] [cursor=pointer]:
+        - /url: https://www.articulate.com/trust/privacy/#cookies
+    - generic [ref=e8]:
+      - button "Manage Preferences" [ref=e9] [cursor=pointer]
+      - button "Accept All" [ref=e10] [cursor=pointer]
+      - button "Reject Non-Essential" [ref=e11] [cursor=pointer]
+  - alert [ref=e17]

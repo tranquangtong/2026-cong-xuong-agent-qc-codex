@@ -20,37 +20,38 @@ This file is automatically updated by the @Reflection-Agent to improve future QC
 
 - **Establish and strictly adhere to a comprehensive style guide.** A clear style guide helps prevent inconsistencies in grammar, spelling, and formatting across the platform.
 
-## Automatic Lessons from 2026-04-12 15:55:43
-- Strengthen QA checks for terminology: Project requirements explicitly require 'Learner' instead of 'User'.
-- Strengthen QA checks for grammar/spelling: Mixed English variants weaken consistency and may violate the British English requirement.
-- Strengthen QA checks for design/layout: A visual review should confirm alignment, spacing, contrast, and touch target sizing.
+## Automatic Lessons from 2026-04-21 16:04:26
+- Strengthen QA checks for navigation: Learners will not be able to access the content, severely impacting their ability to complete the course
+- Strengthen QA checks for interactions: Interactive elements may not function as intended, affecting the learner's experience and engagement
+- Strengthen QA checks for accessibility: Learners with disabilities may face difficulties navigating the content, and the lack of descriptive page title may affect search engine optimization
+- Strengthen QA checks for content: The QA review cannot be completed without access to the content
 
-## Automatic Lessons from 2026-04-12 15:56:07
-- Strengthen QA checks for terminology: Project requirements explicitly require 'Learner' instead of 'User'.
-- Strengthen QA checks for grammar/spelling: Mixed English variants weaken consistency and may violate the British English requirement.
-- Strengthen QA checks for design/layout: A visual review should confirm alignment, spacing, contrast, and touch target sizing.
+## Automatic Lessons from 2026-04-21 16:07:51
+- Ensure all navigation URLs are correct and functional.
+- Investigate and resolve browser console errors and warnings to prevent interaction issues.
+- Browser titles must be clear, concise, and accurately reflect the content for accessibility and navigation.
+- Content language must be clear and concise to ensure learner comprehension.
+- All content must be free of grammatical errors and spelling mistakes.
+- Maintain consistent language style and regional variations (e.g., British English) throughout the content.
 
-## Automatic Lessons from 2026-04-12 16:03:36
-- Strengthen QA checks for assessment coverage: Incomplete quiz traversal can hide follow-up questions, feedback states, or broken continue actions.
-- Strengthen QA checks for content qa: A richer content sample is needed to verify grammar, terminology, and subtitle quality.
+## Automatic Lessons from 2026-04-21 16:12:22
+- Prioritize resolving browser console errors and warnings to ensure smooth navigation and functionality.
+- Verify that browser titles accurately reflect the page content for improved accessibility and user experience.
+- Implement a comprehensive content review process to ensure accuracy, completeness, and consistency.
+- Systematically identify and test all interactive elements to confirm their intended functionality and impact on the learner experience.
+- Always provide specific evidence, such as screenshots or video recordings, to substantiate QA findings and facilitate issue resolution.
 
 
-## Automatic Lessons from 2026-04-12 16:12:13
-- Ensure all essential course materials are provided for comprehensive QA review.
-- Provide detailed specifications and documentation for all interactive elements (e.g., quizzes, activities) for QA.
-- All textual content must be available for review to ensure linguistic consistency and grammatical accuracy (e.g., specific English variants).
-- All visual assets, including screenshots, must be provided for design and quality assurance review.
+## Automatic Lessons from 2026-04-21 17:24:45
+- Ensure course navigation and lesson sequencing allow learners to progress without blocking access to required content.
+- Monitor and resolve browser console errors and warnings to prevent unexpected behavior and ensure interactive elements function correctly.
+- Confirm all course content sections are fully accessible and complete, preventing partial availability issues.
+- Adhere to the specified accessibility baseline (e.g., WCAG 2.2) to ensure content is usable for all learners.
+- Ensure consistent language usage and adherence to specified regional language variants (e.g., British English) throughout the course.
 
 
-## Automatic Lessons from 2026-04-12 16:13:05
-- To enable comprehensive QA, always provide detailed course materials, including outlines, lesson plans, and specific requirements.
-- Clearly outline the expected navigation flow and any known issues to ensure thorough review of the learner experience.
-- Specify criteria and areas of focus for content quality (e.g., grammar, consistency, engagement) to guide targeted assessment.
-- Detail all interactive elements (quizzes, games, discussions) to allow for proper functionality and experience testing.
-- Document all intended accessibility features (e.g., captions, screen reader support) for verification.
-- Provide specific grammar and style guidelines (e.g., language consistency) to ensure adherence to standards.
-
-## Automatic Lessons from 2026-04-14 16:45:00
-- Every QC run should produce a report bundle in `outputs/` with `report.md` as the canonical deliverable.
-- When a QC request includes screenshots, preserve those screenshot files inside the same bundle under `artifacts/`.
-- Content QA should rely on explicit source resolution; if a Figma frame has not been pre-resolved or a document cannot be extracted, the report must name that limitation instead of implying full coverage.
+## Automatic Lessons from 2026-04-21 17:37:11
+- Automated test scripts must ensure and confirm navigation to the deepest relevant content states (e.g., lesson pages) for comprehensive validation.
+- Automated test coverage should explicitly include exercising all interactive elements (e.g., reveals, knowledge checks) within a target content state.
+- For external or embedded content, define and implement robust traversal logic to validate end-to-end user flows and interactions.
+- Avoid speculative QA findings by ensuring automated tests achieve the necessary content depth before evaluating specific features.

@@ -10,6 +10,7 @@ from agents.router import router_node
 from core.content_sources import build_resolved_content_text, resolve_content_sources
 from core.reporting import generate_markdown_report
 from core.state import AgentState, ContentSource, combine_agents, merge_findings, pick_last
+from core.utils import make_output_bundle_dir
 
 try:
     from langgraph.graph import END, START, StateGraph
@@ -81,6 +82,7 @@ def invoke_workflow(
     content_sources: list[ContentSource] | None = None,
     output_dir: Path | None = None,
 ) -> AgentState:
+    output_dir = output_dir or make_output_bundle_dir(project_root, raw_text or user_text or "qc-run")
     resolved_sources = resolve_content_sources(project_root, user_text, content_sources)
     state: AgentState = {
         "messages": [{"role": "user", "content": raw_text}],
@@ -93,7 +95,7 @@ def invoke_workflow(
         "image_paths": image_paths,
         "project_root": project_root,
         "config": config,
-        "output_dir": str(output_dir) if output_dir else "",
+        "output_dir": str(output_dir),
         "content_sources": resolved_sources,
         "resolved_content_text": build_resolved_content_text(resolved_sources, user_text),
     }

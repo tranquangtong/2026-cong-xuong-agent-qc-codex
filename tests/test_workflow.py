@@ -11,11 +11,13 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from core.content_sources import resolve_content_sources
 from core.config import AppConfig
+from core.browser import _best_body_text, _best_title_text, _extract_articulate_asset_url
 from core.graph import invoke_workflow
 from core.knowledge import get_knowledge_context, maybe_consolidate
 from core.reporting import generate_markdown_report
 from core.state import merge_findings
 from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
+from agents.id_agent import run_id_review
 from main import auto_detect_agents, normalize_command
 
 
@@ -228,6 +230,43 @@ class WorkflowTests(unittest.TestCase):
         output_bundles = [path for path in (self.temp_dir / "outputs").iterdir() if path.is_dir()]
         self.assertEqual(len(output_bundles), 1)
 
+    def test_playwright_output_helpers_extract_clean_title_and_body(self) -> None:
+        raw_title = """### Result
+""
+### Ran Playwright code
+```js
+await page.evaluate('() => (document.title)');
+```
+### Page
+- Page URL: https://example.com
+- Page Title: Example Title
+"""
+        raw_body = """### Result
+"Chapter 1\\nStart course\\nKnowledge Check"
+### Ran Playwright code
+```js
+await page.evaluate('() => (document.body ? document.body.innerText : '')');
+```
+### Page
+- Page URL: https://example.com
+- Page Title: Example Title
+"""
+        self.assertEqual(_best_title_text(raw_title), "Example Title")
+        self.assertEqual(_best_body_text(raw_body), "Chapter 1\nStart course\nKnowledge Check")
+
+    def test_playwright_output_helpers_extract_articulate_asset_url(self) -> None:
+        raw_asset = """### Result
+"https://articulateusercontent.com/review/uploads/demo123/abc456/index.html"
+### Ran Playwright code
+```js
+await page.evaluate('() => (...)');
+```
+"""
+        self.assertEqual(
+            _extract_articulate_asset_url(raw_asset),
+            "https://articulateusercontent.com/review/uploads/demo123/abc456/index.html",
+        )
+
     def test_router_runs_both_specialists_for_generic_prompt(self) -> None:
         result = invoke_workflow(
             user_text="Review this e-learning course for navigation and content quality",
@@ -291,6 +330,80 @@ class WorkflowTests(unittest.TestCase):
         )
         ids = {finding["source_agent"] for finding in result["findings"]}
         self.assertIn("graphic", ids)
+
+    @patch("agents.id_agent.run_playwright_probe")
+    def test_id_agent_adds_playwright_probe_evidence_when_available(self, mock_probe) -> None:
+        mock_probe.return_value = {
+            "available": True,
+            "status": "lesson_captured",
+            "url": "https://example.com/course",
+            "asset_url": "https://cdn.example.com/index.html",
+            "lesson_url": "https://cdn.example.com/index.html#/lessons/chapter-1",
+            "lesson_reached": True,
+            "title": "Sample Course",
+            "body_text": "Chapter 1\nStart course\nKnowledge Check",
+            "snapshot_text": "e1 link Start course",
+            "artifacts": [],
+            "warnings": [],
+        }
+
+        result = invoke_workflow(
+            user_text="Review Chapter 1 at https://example.com/course",
+            raw_text="/id Review Chapter 1 at https://example.com/course",
+            image_paths=[],
+            next_agents=["id"],
+            project_root=self.temp_dir,
+            config=self.config,
+        )
+
+        self.assertTrue(any(finding["area"] == "Browser Evidence" for finding in result["findings"]))
+        self.assertTrue(any(source.get("format") == "browser" for source in result.get("content_sources", [])))
+        report_text = Path(result["report_path"]).read_text(encoding="utf-8")
+        self.assertIn("Playwright browser probe", report_text)
+
+    @patch("agents.id_agent.invoke_text_model", side_effect=AssertionError("LLM should not be called for shell-only browser evidence"))
+    @patch("agents.id_agent.is_llm_enabled", return_value=True)
+    @patch("agents.id_agent.run_playwright_probe")
+    def test_id_agent_skips_llm_when_probe_does_not_reach_lesson(self, mock_probe, _mock_llm_enabled, _mock_invoke) -> None:
+        output_dir = make_output_bundle_dir(self.temp_dir, "id shell only")
+        mock_probe.return_value = {
+            "available": True,
+            "status": "asset_captured",
+            "url": "https://example.com/course",
+            "asset_url": "https://cdn.example.com/index.html",
+            "lesson_url": "",
+            "lesson_reached": False,
+            "title": "Sample Course",
+            "body_text": "Review shell and intro only",
+            "snapshot_text": "Current Version Feedback Sign In",
+            "visited_states": [
+                {"step": "review_shell", "page_url": "https://example.com/course"},
+                {"step": "asset_landing", "page_url": "https://cdn.example.com/index.html"},
+            ],
+            "artifacts": [],
+            "warnings": ["Playwright reached the Rise asset page but did not advance into a lesson-level '#/lessons/...' state."],
+        }
+
+        findings, content_sources = run_id_review(
+            {
+                "messages": [],
+                "findings": [],
+                "sender": "",
+                "next_agents": ["id"],
+                "routing_reason": "",
+                "user_text": "Review Chapter 1 at https://example.com/course",
+                "raw_text": "/id Review Chapter 1 at https://example.com/course",
+                "image_paths": [],
+                "project_root": self.temp_dir,
+                "config": self.config,
+                "output_dir": str(output_dir),
+                "content_sources": [],
+                "resolved_content_text": "",
+            }
+        )
+
+        self.assertTrue(any(finding["area"] == "Browser Coverage Limitation" for finding in findings))
+        self.assertTrue(any(source.get("format") == "browser" for source in content_sources))
 
     def test_content_agent_handles_raw_figma_link_as_unresolved_source(self) -> None:
         result = invoke_workflow(
