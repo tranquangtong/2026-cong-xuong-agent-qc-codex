@@ -19,12 +19,21 @@ MODE_TO_COMMAND = {
     "id": "/id",
     "cg": "/cg",
     "fg": "/fg",
+    "cqc": "/cqc",
 }
 
 MODE_TO_AGENT = {
     "id": ["id"],
     "cg": ["content"],
     "fg": ["graphic"],
+    "cqc": ["id", "content", "graphic"],
+}
+
+MODE_TO_FLOW = {
+    "id": "",
+    "cg": "",
+    "fg": "",
+    "cqc": "cqc",
 }
 
 SEVERITY_ORDER = ("Critical", "Major", "Minor", "Suggestion", "Info")
@@ -101,6 +110,7 @@ class JobService:
                 next_agents=MODE_TO_AGENT[job["mode"]],
                 project_root=self.project_root,
                 config=config,
+                flow_type=MODE_TO_FLOW[job["mode"]],
             )
             report_markdown = Path(result["report_path"]).read_text(encoding="utf-8")
             artifact_manifest = self._artifact_manifest_from_output(job_id, job["artifact_manifest"], result["report_path"])
@@ -227,4 +237,3 @@ class JobService:
             for item in artifact_manifest
             if Path(item["name"]).suffix.lower() in image_suffixes
         ]
-

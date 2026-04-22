@@ -27,6 +27,9 @@ def _build_finding(index: int, severity: str, area: str, evidence: str, impact: 
 
 
 def _run_browser_probe(state: AgentState) -> BrowserProbeResult | None:
+    cached_probe = state.get("browser_probe")
+    if isinstance(cached_probe, dict):
+        return cached_probe
     urls = URL_PATTERN.findall(state.get("user_text", ""))
     output_dir = state.get("output_dir", "")
     if not urls or not output_dir:

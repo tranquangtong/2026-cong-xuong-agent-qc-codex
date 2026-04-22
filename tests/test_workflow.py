@@ -18,7 +18,8 @@ from core.reporting import generate_markdown_report
 from core.state import merge_findings
 from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
 from agents.id_agent import run_id_review
-from main import auto_detect_agents, normalize_command
+from main import auto_detect_agents, detect_flow_type, normalize_command
+from tools.wcag_contrast import contrast_ratio
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -196,6 +197,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len(merged), 2)
         self.assertEqual(merged[1]["id"], "ID-002")
 
+    def test_contrast_ratio_matches_wcag_reference_values(self) -> None:
+        self.assertAlmostEqual(contrast_ratio((0, 0, 0), (255, 255, 255)), 21.0, places=2)
+        self.assertAlmostEqual(contrast_ratio((119, 119, 119), (255, 255, 255)), 4.48, places=2)
+
     def test_manual_reflection_updates_human_feedback(self) -> None:
         result = invoke_workflow(
             user_text="You missed Section 3 markers",
@@ -291,6 +296,12 @@ await page.evaluate('() => (...)');
         self.assertEqual(payload, "review this storyboard")
         self.assertEqual(agents, ["content"])
 
+    def test_cqc_command_normalization(self) -> None:
+        payload, agents = normalize_command("/cqc review this articulate lesson")
+        self.assertEqual(payload, "review this articulate lesson")
+        self.assertEqual(agents, ["id", "content", "graphic"])
+        self.assertEqual(detect_flow_type("/cqc review this articulate lesson"), "cqc")
+
     def test_auto_detect_routes_document_paths_to_content(self) -> None:
         agents = auto_detect_agents(f"Please QC '{self.csv_path}'", [], self.temp_dir)
         self.assertEqual(agents, ["content"])
@@ -330,6 +341,43 @@ await page.evaluate('() => (...)');
         )
         ids = {finding["source_agent"] for finding in result["findings"]}
         self.assertIn("graphic", ids)
+
+    @patch(
+        "agents.graphic_agent.audit_image_contrast",
+        return_value={
+            "issues": [
+                {
+                    "image_path": "/tmp/scene-1.png",
+                    "label": "Continue",
+                    "ratio": 2.84,
+                    "threshold": 4.5,
+                    "foreground_hex": "#777777",
+                    "background_hex": "#FFFFFF",
+                    "bbox": (10, 20, 120, 24),
+                    "large_text": False,
+                }
+            ],
+            "limitations": [],
+            "checked_images": ["/tmp/scene-1.png"],
+        },
+    )
+    @patch("agents.graphic_agent.is_llm_enabled", return_value=False)
+    def test_graphic_agent_emits_deterministic_wcag_findings_when_available(self, _mock_llm_enabled, _mock_audit) -> None:
+        image_path = self.fixture_dir / "scene-1.png"
+        image_path.write_text("placeholder", encoding="utf-8")
+
+        result = invoke_workflow(
+            user_text="Review this screenshot for contrast",
+            raw_text=f"/fg Review this screenshot for contrast {image_path}",
+            image_paths=[str(image_path)],
+            next_agents=["graphic"],
+            project_root=self.temp_dir,
+            config=self.config,
+        )
+
+        self.assertTrue(any(finding["area"] == "WCAG Contrast Ratio" for finding in result["findings"]))
+        self.assertTrue(any("2.84:1" in finding["evidence"] for finding in result["findings"]))
+        self.assertFalse(any(finding["area"] == "Graphic Review" for finding in result["findings"]))
 
     @patch("agents.id_agent.run_playwright_probe")
     def test_id_agent_adds_playwright_probe_evidence_when_available(self, mock_probe) -> None:
@@ -404,6 +452,83 @@ await page.evaluate('() => (...)');
 
         self.assertTrue(any(finding["area"] == "Browser Coverage Limitation" for finding in findings))
         self.assertTrue(any(source.get("format") == "browser" for source in content_sources))
+
+    @patch("agents.id_agent.run_playwright_probe", side_effect=AssertionError("ID agent should reuse the collector probe in CQC flow"))
+    @patch("agents.id_agent.is_llm_enabled", return_value=False)
+    @patch("agents.content_agent.is_llm_enabled", return_value=False)
+    @patch("agents.graphic_agent.is_llm_enabled", return_value=False)
+    @patch("core.cqc.run_playwright_probe")
+    def test_cqc_flow_collects_shared_evidence_once(
+        self,
+        mock_collector_probe,
+        _graphic_llm_enabled,
+        _content_llm_enabled,
+        _id_llm_enabled,
+        _id_probe,
+    ) -> None:
+        screenshot_one = str((self.temp_dir / "collector_state_1.png").resolve())
+        screenshot_two = str((self.temp_dir / "collector_state_2.png").resolve())
+        Path(screenshot_one).write_text("image-1", encoding="utf-8")
+        Path(screenshot_two).write_text("image-2", encoding="utf-8")
+        mock_collector_probe.return_value = {
+            "available": True,
+            "status": "lesson_captured",
+            "url": "https://example.com/course",
+            "asset_url": "https://cdn.example.com/index.html",
+            "lesson_url": "https://cdn.example.com/index.html#/lessons/chapter-2",
+            "lesson_reached": True,
+            "title": "Sample Course",
+            "body_text": "Color and behavior matter in this course.",
+            "content_text": "The User should organize color labels and review behavior guidance.",
+            "snapshot_text": "Start Course",
+            "screenshot_path": screenshot_two,
+            "visited_states": [
+                {
+                    "step": "asset_landing",
+                    "page_url": "https://cdn.example.com/index.html",
+                    "title": "Course landing",
+                    "content_excerpt": "Start Course",
+                    "screenshot_path": screenshot_one,
+                    "lesson_label": "Course Introduction",
+                    "matched_label": "",
+                },
+                {
+                    "step": "state_1",
+                    "page_url": "https://cdn.example.com/index.html#/lessons/chapter-2",
+                    "title": "Lesson 1",
+                    "content_excerpt": "The User should organize color labels and review behavior guidance.",
+                    "screenshot_path": screenshot_two,
+                    "lesson_label": "Chapter 2",
+                    "matched_label": "Start Course",
+                },
+            ],
+            "actions_attempted": 2,
+            "actions_changed_state": 1,
+            "artifacts": [],
+            "warnings": [],
+        }
+
+        result = invoke_workflow(
+            user_text="Review this articulate course for flow, grammar, and visuals: https://example.com/course",
+            raw_text="/cqc Review this articulate course for flow, grammar, and visuals: https://example.com/course",
+            image_paths=[],
+            next_agents=["id", "content", "graphic"],
+            project_root=self.temp_dir,
+            config=self.config,
+            flow_type="cqc",
+        )
+
+        source_agents = {finding["source_agent"] for finding in result["findings"]}
+        self.assertIn("id", source_agents)
+        self.assertIn("content", source_agents)
+        self.assertIn("graphic", source_agents)
+        self.assertEqual(mock_collector_probe.call_count, 1)
+        self.assertTrue(any(source.get("display_name") == "CQC Browser Collector Summary" for source in result.get("content_sources", [])))
+        self.assertGreaterEqual(len(result.get("content_sources", [])), 2)
+        self.assertIn(screenshot_one, result.get("image_paths", []))
+        self.assertIn(screenshot_two, result.get("image_paths", []))
+        report_text = Path(result["report_path"]).read_text(encoding="utf-8")
+        self.assertIn("CQC Browser Collector Summary", report_text)
 
     def test_content_agent_handles_raw_figma_link_as_unresolved_source(self) -> None:
         result = invoke_workflow(

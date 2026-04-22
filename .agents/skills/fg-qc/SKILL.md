@@ -30,6 +30,8 @@ Expect one or more of:
 
 Prefer rendered images or direct Figma inspection when tooling is available. If only a raw Figma link is available, do not overstate what was reviewed.
 
+When rendered screenshots are available, use deterministic WCAG contrast-ratio checks when the local OCR/image runtime is available. If that runtime is missing, call out the WCAG contrast coverage limitation explicitly instead of claiming measured pass/fail results.
+
 Read [references/visual-review-rubric.md](references/visual-review-rubric.md) when you need the full review rubric or when the line between confirmed issue and missing evidence matters.
 
 ## Output Contract
@@ -40,6 +42,7 @@ Produce findings that:
 - explain the usability, readability, or accessibility impact
 - recommend a concrete fix direction
 - call out when the evidence is insufficient for a complete review
+- include measured contrast ratios when deterministic WCAG evidence is available
 
 Always export a bilingual `report.md` after the pass. If the review is constrained by a raw Figma link, missing zoomed evidence, or tool access limits, the report must still be created and must document that limitation.
 

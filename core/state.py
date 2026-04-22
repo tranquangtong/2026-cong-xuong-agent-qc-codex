@@ -71,6 +71,7 @@ class AgentState(TypedDict, total=False):
     sender: Annotated[str, pick_last]
     next_agents: Annotated[List[str], combine_agents]
     routing_reason: Annotated[str, pick_last]
+    flow_type: str
     user_text: str
     raw_text: str
     image_paths: list[str]
@@ -81,3 +82,5 @@ class AgentState(TypedDict, total=False):
     reflection_summary: str
     content_sources: list[ContentSource]
     resolved_content_text: str
+    browser_probe: Any
+    collector_summary: str

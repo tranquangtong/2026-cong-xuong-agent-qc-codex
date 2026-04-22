@@ -8,7 +8,7 @@ from core.state import QAFinding
 
 
 JobStatus = Literal["queued", "running", "completed", "failed"]
-QCRunMode = Literal["id", "cg", "fg"]
+QCRunMode = Literal["id", "cg", "fg", "cqc"]
 
 
 class ArtifactResponse(BaseModel):

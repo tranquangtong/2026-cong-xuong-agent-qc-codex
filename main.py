@@ -10,10 +10,11 @@ from core.utils import cleanup_project, ensure_runtime_directories, upgit_projec
 
 
 COMMAND_TO_AGENT = {
-    "/id": "id",
-    "/cg": "content",
-    "/fg": "graphic",
-    "/reflect": "reflection",
+    "/id": ["id"],
+    "/cg": ["content"],
+    "/fg": ["graphic"],
+    "/cqc": ["id", "content", "graphic"],
+    "/reflect": ["reflection"],
 }
 
 
@@ -31,11 +32,18 @@ def parse_args() -> argparse.Namespace:
 
 def normalize_command(raw_text: str) -> tuple[str, list[str]]:
     text = raw_text.strip()
-    for command, agent_name in COMMAND_TO_AGENT.items():
+    for command, agent_names in COMMAND_TO_AGENT.items():
         if text.lower().startswith(command):
             payload = text[len(command) :].strip()
-            return payload or text, [agent_name]
+            return payload or text, list(agent_names)
     return text, []
+
+
+def detect_flow_type(raw_text: str) -> str:
+    text = raw_text.strip().lower()
+    if text.startswith("/cqc"):
+        return "cqc"
+    return ""
 
 
 def auto_detect_agents(user_text: str, image_paths: list[str], project_root: Path) -> list[str]:
@@ -72,6 +80,7 @@ def main() -> int:
 
     raw_text = args.text.strip()
     normalized_text, explicit_agents = normalize_command(raw_text)
+    flow_type = detect_flow_type(raw_text)
     if raw_text.lower().startswith("/cleanup"):
         summary = cleanup_project(project_root)
         print(f"Cleanup complete: removed {summary['removed_count']} temp/cache item(s).")
@@ -147,6 +156,7 @@ def main() -> int:
         next_agents=bypass_agents,
         project_root=project_root,
         config=config,
+        flow_type=flow_type,
     )
 
     print(f"Report generated: {result['report_path']}")

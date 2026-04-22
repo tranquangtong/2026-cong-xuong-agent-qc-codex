@@ -46,3 +46,5 @@ Use WCAG 2.2 as the baseline for visual accessibility risks, especially for:
 - weak focus visibility
 - ambiguous interactive affordances
 - cramped targets on mobile-like screens
+
+When tooling allows it, prefer measured contrast-ratio evidence over subjective statements like "this looks low contrast". If deterministic measurement is unavailable, say that the contrast call is heuristic rather than a confirmed WCAG ratio failure.

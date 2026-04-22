@@ -6,6 +6,7 @@ from agents.content_agent import content_node
 from agents.graphic_agent import graphic_node
 from agents.id_agent import id_node
 from agents.reflection_agent import reflection_node
+from core.cqc import prepare_cqc_state
 from agents.router import router_node
 from core.content_sources import build_resolved_content_text, resolve_content_sources
 from core.reporting import generate_markdown_report
@@ -81,6 +82,7 @@ def invoke_workflow(
     config,
     content_sources: list[ContentSource] | None = None,
     output_dir: Path | None = None,
+    flow_type: str = "",
 ) -> AgentState:
     output_dir = output_dir or make_output_bundle_dir(project_root, raw_text or user_text or "qc-run")
     resolved_sources = resolve_content_sources(project_root, user_text, content_sources)
@@ -90,6 +92,7 @@ def invoke_workflow(
         "sender": "",
         "next_agents": list(next_agents),
         "routing_reason": "",
+        "flow_type": flow_type,
         "user_text": user_text,
         "raw_text": raw_text,
         "image_paths": image_paths,
@@ -99,6 +102,9 @@ def invoke_workflow(
         "content_sources": resolved_sources,
         "resolved_content_text": build_resolved_content_text(resolved_sources, user_text),
     }
+
+    if state.get("flow_type") == "cqc":
+        state = _merge_states(state, [prepare_cqc_state(state)])
 
     route = start_routing(state)
     if route == "router":

@@ -23,6 +23,7 @@ The canonical mode mapping is:
 - `/id` -> `id`
 - `/fg` -> `graphic`
 - `/cg` -> `content`
+- `/cqc` -> collaborative course QC flow using shared browser evidence for `id` + `content` + `graphic`
 - `/reflect` -> `reflect`
 
 The project utility mapping is:
@@ -39,6 +40,7 @@ Default `/upgit` behavior:
 
 When working in Codex chat, prefer the workflow skills:
 
+- `$cqc`
 - `$id-qc`
 - `$fg-qc`
 - `$cg-qc`
@@ -50,6 +52,7 @@ Use explicit workflow skills when the user clearly knows the target mode. If the
 
 The current repo-local skill folders are:
 
+- `.agents/skills/cqc`
 - `.agents/skills/id-qc`
 - `.agents/skills/fg-qc`
 - `.agents/skills/cg-qc`
@@ -61,6 +64,7 @@ The current repo-local skill folders are:
 
 Apply these routing rules consistently:
 
+- Explicit `/cqc` requests route to the collaborative course QC flow rather than a single specialist mode
 - Articulate, Rise, Storyline, SCORM, browser-flow, interaction, quiz, knowledge-check, navigation, and accessibility requests route to `id`
 - Figma links, screenshots, and rendered design artifacts such as poster exports or PDF previews route to `graphic`
 - Storyboard copy, subtitles, spelling, grammar, terminology, and document artifacts such as `pdf`, `csv`, and `docx` route to `content`

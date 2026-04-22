@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from core.knowledge import get_knowledge_context
 from core.llm import invoke_multimodal_model, invoke_text_model, is_llm_enabled, parse_json_object
 from core.state import AgentState, QAFinding
 from core.utils import log_communication
 from tools.text_tools import make_finding_id
+from tools.wcag_contrast import audit_image_contrast
 
 
 FIGMA_PATTERN = re.compile(r"https?://(?:www\.)?figma\.com/\S+", re.IGNORECASE)
@@ -24,9 +26,9 @@ def _build_finding(index: int, severity: str, area: str, evidence: str, impact: 
     }
 
 
-def _fallback_graphic_review(state: AgentState) -> list[QAFinding]:
+def _fallback_graphic_review(state: AgentState, start_index: int = 1) -> list[QAFinding]:
     findings: list[QAFinding] = []
-    index = 1
+    index = start_index
     text = state.get("user_text", "")
 
     figma_links = FIGMA_PATTERN.findall(text)
@@ -71,9 +73,9 @@ def _fallback_graphic_review(state: AgentState) -> list[QAFinding]:
     return findings
 
 
-def _normalize_llm_findings(raw_findings: list[dict]) -> list[QAFinding]:
+def _normalize_llm_findings(raw_findings: list[dict], start_index: int = 1) -> list[QAFinding]:
     normalized: list[QAFinding] = []
-    for index, item in enumerate(raw_findings, start=1):
+    for index, item in enumerate(raw_findings, start=start_index):
         normalized.append(
             _build_finding(
                 index,
@@ -87,11 +89,69 @@ def _normalize_llm_findings(raw_findings: list[dict]) -> list[QAFinding]:
     return normalized
 
 
+def _build_deterministic_wcag_findings(state: AgentState, start_index: int = 1) -> list[QAFinding]:
+    audit = audit_image_contrast(state.get("image_paths", []))
+    findings: list[QAFinding] = []
+    index = start_index
+
+    for issue in audit.get("issues", []):
+        image_name = Path(str(issue["image_path"])).name
+        size_label = "large text" if issue["large_text"] else "normal text"
+        findings.append(
+            _build_finding(
+                index,
+                "Major" if issue["threshold"] >= 4.5 else "Minor",
+                "WCAG Contrast Ratio",
+                (
+                    f"{image_name}: OCR sample '{issue['label']}' measured approximately "
+                    f"{issue['ratio']:.2f}:1 against the local background "
+                    f"({issue['foreground_hex']} on {issue['background_hex']}). "
+                    f"This is below the WCAG AA threshold of {issue['threshold']:.1f}:1 for {size_label}."
+                ),
+                (
+                    "Low text contrast can reduce readability, especially when the course is viewed at "
+                    "normal playback size or on lower-quality displays."
+                ),
+                (
+                    "Increase the luminance difference between the text and its immediate background, "
+                    "or enlarge/promote the text so it meets the appropriate WCAG AA threshold."
+                ),
+            )
+        )
+        index += 1
+
+    for limitation in audit.get("limitations", []):
+        findings.append(
+            _build_finding(
+                index,
+                "Info",
+                "WCAG Contrast Coverage",
+                limitation,
+                "Deterministic contrast coverage was limited for part of the supplied evidence.",
+                (
+                    "Install the missing OCR/image runtime dependencies or provide clearer rendered "
+                    "screenshots so the checker can measure local text contrast."
+                ),
+            )
+        )
+        index += 1
+
+    return findings
+
+
+def _has_actionable_wcag_findings(findings: list[QAFinding]) -> bool:
+    return any(finding["area"] == "WCAG Contrast Ratio" for finding in findings)
+
+
 def run_graphic_review(state: AgentState) -> list[QAFinding]:
+    deterministic_findings = _build_deterministic_wcag_findings(state)
     config = state["config"]
     api_key = config.api_key_for_provider(config.graphic_provider)
     if not is_llm_enabled(config.graphic_provider, api_key):
-        return _fallback_graphic_review(state)
+        if _has_actionable_wcag_findings(deterministic_findings):
+            return deterministic_findings
+        fallback_findings = _fallback_graphic_review(state, start_index=len(deterministic_findings) + 1)
+        return [*deterministic_findings, *fallback_findings] if deterministic_findings else fallback_findings
 
     knowledge_context = get_knowledge_context(state["project_root"])
     figma_links = FIGMA_PATTERN.findall(state.get("user_text", ""))
@@ -156,10 +216,16 @@ Referenced Figma links:
                 user_prompt=user_prompt,
             )
         payload = parse_json_object(raw_response)
-        findings = _normalize_llm_findings(payload.get("findings", []))
-        return findings or _fallback_graphic_review(state)
-    except Exception:
+        llm_findings = _normalize_llm_findings(payload.get("findings", []), start_index=len(deterministic_findings) + 1)
+        combined_findings = [*deterministic_findings, *llm_findings]
+        if combined_findings:
+            return combined_findings
         return _fallback_graphic_review(state)
+    except Exception:
+        if _has_actionable_wcag_findings(deterministic_findings):
+            return deterministic_findings
+        fallback_findings = _fallback_graphic_review(state, start_index=len(deterministic_findings) + 1)
+        return [*deterministic_findings, *fallback_findings] if deterministic_findings else fallback_findings
 
 
 def graphic_node(state: AgentState) -> AgentState:

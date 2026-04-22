@@ -55,3 +55,21 @@ This file is automatically updated by the @Reflection-Agent to improve future QC
 - Automated test coverage should explicitly include exercising all interactive elements (e.g., reveals, knowledge checks) within a target content state.
 - For external or embedded content, define and implement robust traversal logic to validate end-to-end user flows and interactions.
 - Avoid speculative QA findings by ensuring automated tests achieve the necessary content depth before evaluating specific features.
+
+
+## Automatic Lessons from 2026-04-21 22:14:44
+- Strengthen QA checks for browser probe: Without a successful live probe, the review cannot confirm interaction behavior from the actual page state.
+- Strengthen QA checks for browser coverage: The course should be tested with artifact-based browser notes to validate interactions end-to-end.
+- Strengthen QA checks for assessment coverage: Incomplete quiz traversal can hide follow-up questions, feedback states, or broken continue actions.
+
+
+## Automatic Lessons from 2026-04-22 11:08:17
+- Establish a standard graphic review process for all visual assets.
+- Graphic reviews must systematically evaluate contrast, layout, readability, and interaction affordance.
+- Ensure all visual designs adhere to established spacing, hierarchy, and WCAG 2.2 accessibility criteria.
+
+
+## Automatic Lessons from 2026-04-22 12:19:38
+- Ensure all required QA tool dependencies (e.g., image processing, OCR) are installed to enable comprehensive automated checks.
+- Provide clear, high-resolution visual evidence (screenshots) to facilitate both automated and manual accessibility analysis.
+- Conduct thorough manual reviews of all visual assets for adherence to design principles (spacing, hierarchy) and WCAG 2.2 visual accessibility criteria (contrast, readability, interaction affordance).
