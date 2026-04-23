@@ -373,7 +373,7 @@ def run_id_review(state: AgentState) -> tuple[list[QAFinding], list[ContentSourc
     if not is_llm_enabled(config.id_provider, api_key):
         return _fallback_id_review(state, probe), content_sources
 
-    knowledge_context = get_knowledge_context(state["project_root"])
+    knowledge_context = get_knowledge_context(state["project_root"], mode="id", state=state)
     system_prompt = f"""
 You are InstructionalDesign-Agent for e-learning QA.
 Review the request and extract actionable QA findings focused on:

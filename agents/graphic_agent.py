@@ -153,7 +153,7 @@ def run_graphic_review(state: AgentState) -> list[QAFinding]:
         fallback_findings = _fallback_graphic_review(state, start_index=len(deterministic_findings) + 1)
         return [*deterministic_findings, *fallback_findings] if deterministic_findings else fallback_findings
 
-    knowledge_context = get_knowledge_context(state["project_root"])
+    knowledge_context = get_knowledge_context(state["project_root"], mode="graphic", state=state)
     figma_links = FIGMA_PATTERN.findall(state.get("user_text", ""))
     source_note = "\n".join(f"- {link}" for link in figma_links) if figma_links else "- No explicit Figma link detected."
     system_prompt = f"""

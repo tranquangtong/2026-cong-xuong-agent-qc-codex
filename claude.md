@@ -17,6 +17,7 @@ There is also a static frontend in `web/`.
 
 For Codex chat workflows, the repo also ships repo-local skills under `.agents/skills`:
 
+- `cqc`
 - `id-qc`
 - `fg-qc`
 - `cg-qc`
@@ -25,24 +26,29 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - `upgit`
 
 ## High-level flow
-- `main.py` supports `/id`, `/cg`, `/fg`, `/reflect`, `/cleanup`, and `/upgit`
+- `main.py` supports `/id`, `/cg`, `/fg`, `/cqc`, `/reflect`, `/cleanup`, and `/upgit`
 - In Codex chat, the same cleanup utility can be invoked via `$cleanup`
 - In Codex chat, the git sync utility can be invoked via `$upgit`
+- In Codex chat, collaborative course QC should use `$cqc` when the request is specifically about one Articulate/Rise course flow
 - `/upgit` skips runtime/generated paths such as `docs/communication.md` and `outputs/` by default, and auto-generates a commit message when none is provided
 - Requests may skip the router via explicit commands or auto-detect
-- `core/graph.py` resolves content sources, runs specialist agents, then runs reflection
+- `core/graph.py` resolves content sources, prepares shared CQC browser evidence when `flow_type == "cqc"`, runs specialist agents, then runs reflection
 - Every QA run writes a fresh bundle to `outputs/<timestamp>_<slug>_<id>/`
 - `core/reporting.py` owns bilingual report generation for `id`, `content`, and `graphic`
 - `report.md` and generated/copied artifacts should live in the same output bundle
-- Reflection can append lessons to:
+- Reflection v2 can route learning into:
   - `knowledge/general/human_feedback_lessons.md`
   - `knowledge/general/system_lessons.md`
+  - `knowledge/general/process_facts.md`
+  - `knowledge/procedures/procedure_candidates.md`
+  - `knowledge/backlog/reflection_followups.md`
 
 ## Key routing rules
 - Local `.pdf`, `.csv`, `.docx` references route to `content`
 - Figma links route to `graphic`, or `content + graphic` when the prompt is clearly about storyboard/copy/text
 - Images, screenshots, rendered PDF previews, and exported design frames route to `graphic`
 - Articulate, Rise, Storyline, and SCORM-style prompts route to `id`
+- Explicit course-level collaborative review requests should route to `/cqc` or `$cqc`
 - If the router LLM is disabled, the repo falls back to heuristics
 
 ## Source handling rules
@@ -88,17 +94,25 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - `id`, `cg`, and `fg` runs should always export `report.md`, even when the review is partial or blocked
 - `report.md` and all generated/copied evidence for the same QC pass should stay in one output bundle
 - `docs/communication.md` is an append-only runtime log; treat it as generated operational history
-- Knowledge load order is:
+- Reflection/knowledge behavior now uses scoped retrieval. Knowledge load order is:
   1. `human_feedback_lessons.md`
   2. `system_lessons.md`
-  3. `wcag_global.md`
-  4. `project_x_req.md`
+  3. `process_facts.md`
+  4. `procedure_candidates.md`
+  5. `wcag_global.md`
+  6. `project_x_req.md`
+- `reflection_followups.md` is draft/backlog memory and should not be injected into specialist prompts
+- Human feedback should stay concise, reusable, and operational; avoid duplicating near-identical rules
+- For Articulate/Rise page-level review, test all visible interactives on the page and inspect all newly revealed text before claiming coverage
+- For quizzes, prioritize testing correct and incorrect answer paths, learner-facing explanations, grammar/spelling, and post-quiz flow; do not over-index on pre-submit states
+- Every participating specialist should still contribute a result summary even when no major defect is found; the coordinating flow/report then merges that into the final `report.md`
 - Save edited text files as UTF-8
 
 ## Current caveats worth knowing
 - The web API exposes `id`, `cg`, and `fg` modes directly; it does not expose the free router path as a user-facing mode
 - Auth helpers exist in `api/auth.py`, but the current web UI is effectively running in no-auth mode
 - Reflection skips automatic lesson generation when fewer than 2 findings are produced
+- Reflection v2 uses metadata-backed entries internally, but legacy bullet-style knowledge files are still supported and may coexist during migration
 - `cleanup_project()` removes cache/temp files but preserves valid output bundle directories
 - Vietnamese report translation prefers live provider translation; if all translation-capable providers fail, the Vietnamese section should explicitly say translation was unavailable rather than silently repeating English
 - The local shell interpreter can differ from the repo's intended environment; when that happens, missing optional packages may surface only in this shell even though `requirements.txt` is correct

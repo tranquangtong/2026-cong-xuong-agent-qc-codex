@@ -34,6 +34,42 @@ class ContentSource(TypedDict, total=False):
     warnings: list[str]
 
 
+class KnowledgeEntry(TypedDict, total=False):
+    id: str
+    title: str
+    category: str
+    tags: list[str]
+    source_agent: str
+    first_seen_at: str
+    last_seen_at: str
+    seen_count: int
+    confidence: str
+    promoted: bool
+    promoted_by: str
+    example_run_refs: list[str]
+    summary: str
+    rationale: str
+    recommended_action: str
+    storage_key: str
+    legacy: bool
+
+
+class FollowupItem(TypedDict, total=False):
+    id: str
+    summary: str
+    rationale: str
+    recommended_action: str
+    tags: list[str]
+    source_agent: str
+
+
+class ReflectionRecord(TypedDict, total=False):
+    storage_key: str
+    entry: KnowledgeEntry
+    discarded: bool
+    reason: str
+
+
 class RouteDecision(TypedDict):
     next: List[Literal["content", "id", "graphic", "reflection", "FINISH"]]
     reasoning: str
@@ -84,3 +120,5 @@ class AgentState(TypedDict, total=False):
     resolved_content_text: str
     browser_probe: Any
     collector_summary: str
+    requested_scope: dict[str, Any]
+    coverage_map: dict[str, Any]

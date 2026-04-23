@@ -331,7 +331,7 @@ def run_content_review(state: AgentState) -> list[QAFinding]:
     if not is_llm_enabled(config.content_provider, api_key):
         return _fallback_content_review(state)
 
-    knowledge_context = get_knowledge_context(state["project_root"])
+    knowledge_context = get_knowledge_context(state["project_root"], mode="content", state=state)
     llm_findings: list[QAFinding] = []
     for source in sources:
         llm_findings.extend(_review_source_with_llm(state, source, knowledge_context))

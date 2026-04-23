@@ -17,12 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 class WebApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="agent-qc-web-"))
-        for relative in ("docs", "knowledge/general", "knowledge/requirements", "outputs"):
+        for relative in ("docs", "knowledge/general", "knowledge/requirements", "knowledge/procedures", "knowledge/backlog", "outputs"):
             (self.temp_dir / relative).mkdir(parents=True, exist_ok=True)
 
         for relative in (
             "knowledge/general/human_feedback_lessons.md",
             "knowledge/general/system_lessons.md",
+            "knowledge/general/process_facts.md",
+            "knowledge/procedures/procedure_candidates.md",
+            "knowledge/backlog/reflection_followups.md",
             "knowledge/general/wcag_global.md",
             "knowledge/requirements/project_x_req.md",
             "docs/communication.md",

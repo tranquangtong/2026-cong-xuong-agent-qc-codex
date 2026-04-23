@@ -13,7 +13,7 @@ from core.content_sources import resolve_content_sources
 from core.config import AppConfig
 from core.browser import _best_body_text, _best_title_text, _extract_articulate_asset_url
 from core.graph import invoke_workflow
-from core.knowledge import get_knowledge_context, maybe_consolidate
+from core.knowledge import get_knowledge_context, load_knowledge_entries, maybe_consolidate
 from core.reporting import generate_markdown_report
 from core.state import merge_findings
 from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
@@ -148,7 +148,7 @@ def _write_minimal_docx(path: Path, paragraphs: list[str], table_rows: list[list
 class WorkflowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="agent-qc-test-"))
-        for relative in ("docs", "knowledge/general", "knowledge/requirements", "outputs"):
+        for relative in ("docs", "knowledge/general", "knowledge/requirements", "knowledge/procedures", "knowledge/backlog", "outputs"):
             (self.temp_dir / relative).mkdir(parents=True, exist_ok=True)
 
         communication_seed = REPO_ROOT / "docs" / "communication.md"
@@ -161,6 +161,9 @@ class WorkflowTests(unittest.TestCase):
             )
         shutil.copy(REPO_ROOT / "knowledge" / "general" / "human_feedback_lessons.md", self.temp_dir / "knowledge" / "general" / "human_feedback_lessons.md")
         shutil.copy(REPO_ROOT / "knowledge" / "general" / "system_lessons.md", self.temp_dir / "knowledge" / "general" / "system_lessons.md")
+        shutil.copy(REPO_ROOT / "knowledge" / "general" / "process_facts.md", self.temp_dir / "knowledge" / "general" / "process_facts.md")
+        shutil.copy(REPO_ROOT / "knowledge" / "procedures" / "procedure_candidates.md", self.temp_dir / "knowledge" / "procedures" / "procedure_candidates.md")
+        shutil.copy(REPO_ROOT / "knowledge" / "backlog" / "reflection_followups.md", self.temp_dir / "knowledge" / "backlog" / "reflection_followups.md")
         shutil.copy(REPO_ROOT / "knowledge" / "general" / "wcag_global.md", self.temp_dir / "knowledge" / "general" / "wcag_global.md")
         shutil.copy(REPO_ROOT / "knowledge" / "requirements" / "project_x_req.md", self.temp_dir / "knowledge" / "requirements" / "project_x_req.md")
 
@@ -213,6 +216,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("Stored manual feedback", result["reflection_summary"])
         content = (self.temp_dir / "knowledge" / "general" / "human_feedback_lessons.md").read_text(encoding="utf-8")
         self.assertIn("Section 3 markers", content)
+        entries = load_knowledge_entries(self.temp_dir, "human_feedback")
+        self.assertTrue(any(entry["promoted"] for entry in entries if "Section 3 markers" in entry["summary"]))
 
     def test_generate_markdown_report_reuses_supplied_output_dir(self) -> None:
         output_dir = make_output_bundle_dir(self.temp_dir, "graphic qa bundle")
@@ -329,6 +334,185 @@ await page.evaluate('() => (...)');
         self.assertLess(context.index("Human QA Supervisor Lessons"), context.index("System Lessons Learned"))
         self.assertLess(context.index("System Lessons Learned"), context.index("WCAG Global Baseline"))
         self.assertLess(context.index("WCAG Global Baseline"), context.index("Project X Requirements"))
+
+    def test_reflection_repeats_increment_seen_count_without_duplicate_entry(self) -> None:
+        from agents.reflection_agent import reflection_node
+
+        findings = [
+            {
+                "id": "ID-001",
+                "severity": "Major",
+                "area": "Knowledge Check State Leakage",
+                "evidence": "Learner sees incorrect feedback before submit.",
+                "impact": "Assessment validity is undermined.",
+                "recommended_fix": "Hide feedback until submit.",
+                "source_agent": "id",
+            },
+            {
+                "id": "C-001",
+                "severity": "Minor",
+                "area": "Grammar/Spelling",
+                "evidence": "Detected article error in learner-facing copy.",
+                "impact": "Polish is reduced.",
+                "recommended_fix": "Fix the article.",
+                "source_agent": "content",
+            },
+        ]
+
+        for turn in range(2):
+            reflection_node(
+                {
+                    "findings": findings,
+                    "project_root": self.temp_dir,
+                    "config": self.config,
+                    "raw_text": f"/cqc run {turn}",
+                    "user_text": "Review chapter 1 knowledge check",
+                    "flow_type": "cqc",
+                }
+            )
+
+        entries = [entry for entry in load_knowledge_entries(self.temp_dir, "system") if "knowledge check state leakage" in entry["summary"].lower()]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["seen_count"], 2)
+
+    def test_reflection_auto_promotes_after_third_repeat(self) -> None:
+        from agents.reflection_agent import reflection_node
+
+        findings = [
+            {
+                "id": "ID-001",
+                "severity": "Major",
+                "area": "Knowledge Check State Leakage",
+                "evidence": "Learner sees incorrect feedback before submit.",
+                "impact": "Assessment validity is undermined.",
+                "recommended_fix": "Hide feedback until submit.",
+                "source_agent": "id",
+            },
+            {
+                "id": "C-001",
+                "severity": "Minor",
+                "area": "Grammar/Spelling",
+                "evidence": "Detected article error in learner-facing copy.",
+                "impact": "Polish is reduced.",
+                "recommended_fix": "Fix the article.",
+                "source_agent": "content",
+            },
+        ]
+
+        for turn in range(3):
+            reflection_node(
+                {
+                    "findings": findings,
+                    "project_root": self.temp_dir,
+                    "config": self.config,
+                    "raw_text": f"/cqc repeat {turn}",
+                    "user_text": "Review chapter 1 knowledge check",
+                    "flow_type": "cqc",
+                }
+            )
+
+        entries = [entry for entry in load_knowledge_entries(self.temp_dir, "system") if "knowledge check state leakage" in entry["summary"].lower()]
+        self.assertEqual(len(entries), 1)
+        self.assertTrue(entries[0]["promoted"])
+        self.assertEqual(entries[0]["seen_count"], 3)
+
+    def test_asset_specific_info_routes_to_followup_or_discard_not_system(self) -> None:
+        from agents.reflection_agent import reflection_node
+
+        findings = [
+            {
+                "id": "FG-001",
+                "severity": "Info",
+                "area": "Graphic Coverage Note",
+                "evidence": "Used page-2026-04-23T07-13-40-434Z.png for one screenshot-only visual check.",
+                "impact": "Only this asset state was visible.",
+                "recommended_fix": "Capture more screenshots if broader visual scope is needed.",
+                "source_agent": "graphic",
+            },
+            {
+                "id": "ID-002",
+                "severity": "Major",
+                "area": "Knowledge Check State Leakage",
+                "evidence": "Learner sees incorrect feedback before submit.",
+                "impact": "Assessment validity is undermined.",
+                "recommended_fix": "Hide feedback until submit.",
+                "source_agent": "id",
+            },
+        ]
+
+        reflection_node(
+            {
+                "findings": findings,
+                "project_root": self.temp_dir,
+                "config": self.config,
+                "raw_text": "/cqc asset specific",
+                "user_text": "Review chapter 1",
+                "flow_type": "cqc",
+            }
+        )
+        system_entries = load_knowledge_entries(self.temp_dir, "system")
+        self.assertFalse(any("graphic coverage note" in entry["summary"].lower() for entry in system_entries))
+
+    def test_scoped_knowledge_context_ignores_followups(self) -> None:
+        from core.knowledge import append_or_update_entry
+
+        append_or_update_entry(
+            self.temp_dir,
+            "process_facts",
+            {
+                "id": "process-fact-001",
+                "title": "## Process Fact",
+                "category": "process_fact",
+                "tags": ["id", "articulate", "knowledge-check"],
+                "source_agent": "id",
+                "first_seen_at": "2026-04-23 10:00:00",
+                "last_seen_at": "2026-04-23 10:00:00",
+                "seen_count": 1,
+                "confidence": "high",
+                "promoted": False,
+                "promoted_by": "",
+                "example_run_refs": ["/cqc chapter 1"],
+                "summary": "Capture direct asset evidence for articulate knowledge checks.",
+                "rationale": "This improves evidence quality.",
+                "recommended_action": "Resolve the asset URL before reviewing the quiz flow.",
+            },
+        )
+        append_or_update_entry(
+            self.temp_dir,
+            "followups",
+            {
+                "id": "follow-up-001",
+                "title": "## Follow-up",
+                "category": "follow_up_item",
+                "tags": ["id", "articulate", "knowledge-check"],
+                "source_agent": "id",
+                "first_seen_at": "2026-04-23 10:00:00",
+                "last_seen_at": "2026-04-23 10:00:00",
+                "seen_count": 1,
+                "confidence": "medium",
+                "promoted": False,
+                "promoted_by": "",
+                "example_run_refs": ["/cqc chapter 1"],
+                "summary": "Improve collector heuristics for articulate quiz branching.",
+                "rationale": "This is a code follow-up, not a prompt rule.",
+                "recommended_action": "Adjust collector behavior.",
+            },
+        )
+
+        context = get_knowledge_context(
+            self.temp_dir,
+            mode="id",
+            state={
+                "project_root": self.temp_dir,
+                "user_text": "Review this Articulate knowledge check",
+                "flow_type": "cqc",
+                "browser_probe": {"status": "lesson_captured"},
+                "content_sources": [],
+                "image_paths": [],
+            },
+        )
+        self.assertIn("Capture direct asset evidence for articulate knowledge checks.", context)
+        self.assertNotIn("Improve collector heuristics for articulate quiz branching.", context)
 
     def test_graphic_agent_runs_for_figma_link(self) -> None:
         result = invoke_workflow(

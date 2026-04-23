@@ -7,6 +7,12 @@ This repository is a multi-agent QC factory for e-learning review. The working m
 - `content`: content QA for storyboard copy, subtitles, grammar, spelling, British English, terminology, and learner-facing clarity
 - `reflect`: lesson capture from feedback or findings so future QC passes improve over time
 
+Reflection currently uses a `reflect v2` style durable-learning loop:
+
+- manual feedback is stored as promoted human rules
+- automatic reflection routes reusable learning into `system lessons`, `process facts`, `procedure candidates`, or `follow-up drafts`
+- specialist agents receive scoped knowledge context rather than a full unfiltered knowledge dump
+
 The runtime entrypoints in this repo are:
 
 - CLI in `main.py`
@@ -60,6 +66,16 @@ The current repo-local skill folders are:
 - `.agents/skills/cleanup`
 - `.agents/skills/upgit`
 
+The active knowledge files are:
+
+- `knowledge/general/human_feedback_lessons.md`
+- `knowledge/general/system_lessons.md`
+- `knowledge/general/process_facts.md`
+- `knowledge/general/wcag_global.md`
+- `knowledge/procedures/procedure_candidates.md`
+- `knowledge/backlog/reflection_followups.md`
+- `knowledge/requirements/project_x_req.md`
+
 ## Routing Rules
 
 Apply these routing rules consistently:
@@ -84,6 +100,8 @@ Never pretend you inspected evidence that you did not actually access.
 - If a Figma link is present but no text was resolved for content review, say so plainly
 - If only prompt text is available, treat the output as a constrained QA pass and disclose the limitation
 - If the user asks for section-level ID review, only claim completion when all visible interactives, revealed text, and reachable knowledge-check states within scope were exercised
+- For Articulate Storyline and Rise review, interact through all visible items on the page such as click-to-reveal, tabs, flashcards, markers, and similar reveal patterns before claiming the page is covered
+- For course QA, `Content-Agent` should check learner-facing grammar, spelling, and British English consistency on the exercised states, while `ID-Agent` should judge whether the exercised content aligns with project intent and learning outcomes
 
 When evidence is partial, report the missing coverage as part of the findings or summary.
 
@@ -99,6 +117,8 @@ All reports and QC summaries should follow these expectations:
 - Use the shared reporting pipeline in `core/reporting.py` for bilingual output rather than hand-writing separate chat-only summaries
 - Distinguish clearly between confirmed defects, review limitations, and follow-up suggestions
 - Prefer honest coverage notes over overclaiming that a review is complete
+- If a participating specialist finds no major issue, the specialist result should still say so explicitly rather than disappearing from the run summary
+- Suggestions should remain clearly labeled as `Suggestion` rather than being mixed into confirmed defects
 
 For content and graphic QA, preserve source cues such as page, row, paragraph, frame, screenshot, node, or section when the evidence supports them.
 
@@ -115,6 +135,7 @@ Artifact behavior:
 - Every QC run should keep `report.md` and any generated or copied artifacts in the same output bundle
 - Preferred structure is `outputs/<bundle>/report.md` plus `outputs/<bundle>/artifacts/...`
 - Do not create a second output bundle for the same QC pass just because artifacts were prepared before report generation
+- The coordinating flow or merger is responsible for synthesizing participating-agent outputs into the final `report.md`
 
 ## Tooling Guidance
 
@@ -127,3 +148,4 @@ This repo may be used in environments with or without plugins and MCP tools.
 - For `content` QA, raw Figma links are unresolved unless text has already been pre-resolved into `content_sources`
 - For document-based review, supported ingestion remains `pdf`, `csv`, and `docx`
 - When screenshots or rendered previews are created during review, store them in the same output bundle as the final `report.md`
+- For quiz review, prioritize correct-path and wrong-path learner outcomes, explanation quality, grammar/spelling, completeness, and post-quiz progression. Do not over-weight pre-submit states if they do not materially affect the learner experience.
