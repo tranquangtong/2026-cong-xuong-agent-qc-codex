@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video QC"
+  short_description: "Run collaborative QC for Video"
+  default_prompt: "Use $cqc to review this Articulate course through shared ID, content, and graphic QA in one run."

@@ -15,7 +15,7 @@ def _is_test_key(value: str) -> bool:
 
 
 def is_llm_enabled(provider: str, api_key: str) -> bool:
-    return provider in {"groq", "google"} and not _is_test_key(api_key)
+    return provider in {"groq", "google", "openai"} and not _is_test_key(api_key)
 
 
 def _extract_text(response: Any) -> str:
@@ -248,3 +248,26 @@ def parse_json_object(raw_text: str) -> dict[str, Any]:
             continue
 
     raise ValueError("Could not parse JSON object from model response")
+
+
+def invoke_openai_transcription(
+    *,
+    model: str,
+    api_key: str,
+    audio_path: str,
+) -> dict[str, Any]:
+    with Path(audio_path).open("rb") as handle:
+        response = httpx.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            data={
+                "model": model,
+                "response_format": "verbose_json",
+                "timestamp_granularities[]": "segment",
+            },
+            files={"file": (Path(audio_path).name, handle, "audio/wav")},
+            timeout=300,
+        )
+    response.raise_for_status()
+    payload = response.json()
+    return payload if isinstance(payload, dict) else {}

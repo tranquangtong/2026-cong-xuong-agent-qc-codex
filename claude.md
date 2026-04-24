@@ -6,6 +6,7 @@ Cong Xuong Agent QC is a Python multi-agent QA factory for e-learning review. It
 - `id`: instructional design, browser flow, quiz logic, navigation, accessibility, on-screen text
 - `content`: storyboard copy, subtitles, grammar, spelling, British English, terminology consistency
 - `graphic`: Figma, screenshot, and rendered-artifact visual QA for layout, spacing, hierarchy, readability, and WCAG 2.2 visual risks
+- `video`: local learning video QC for `video + .srt` artifacts, sampled frames, subtitle quality, and subtitle/audio sync
 - `reflection`: writes reusable lessons back into the knowledge base
 
 The repo has two entry surfaces:
@@ -18,6 +19,7 @@ There is also a static frontend in `web/`.
 For Codex chat workflows, the repo also ships repo-local skills under `.agents/skills`:
 
 - `cqc`
+- `vqc`
 - `id-qc`
 - `fg-qc`
 - `cg-qc`
@@ -26,15 +28,16 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - `upgit`
 
 ## High-level flow
-- `main.py` supports `/id`, `/cg`, `/fg`, `/cqc`, `/reflect`, `/cleanup`, and `/upgit`
+- `main.py` supports `/id`, `/cg`, `/fg`, `/cqc`, `/vqc`, `/reflect`, `/cleanup`, and `/upgit`
 - In Codex chat, the same cleanup utility can be invoked via `$cleanup`
 - In Codex chat, the git sync utility can be invoked via `$upgit`
 - In Codex chat, collaborative course QC should use `$cqc` when the request is specifically about one Articulate/Rise course flow
+- In Codex chat, local video QC should use `$vqc` when the request is about one local learning video plus subtitle artifact
 - `/upgit` skips runtime/generated paths such as `docs/communication.md` and `outputs/` by default, and auto-generates a commit message when none is provided
 - Requests may skip the router via explicit commands or auto-detect
-- `core/graph.py` resolves content sources, prepares shared CQC browser evidence when `flow_type == "cqc"`, runs specialist agents, then runs reflection
+- `core/graph.py` resolves content sources, prepares shared CQC browser evidence when `flow_type == "cqc"`, prepares shared VQC local-video evidence when `flow_type == "vqc"`, runs specialist agents, then runs reflection
 - Every QA run writes a fresh bundle to `outputs/<timestamp>_<slug>_<id>/`
-- `core/reporting.py` owns bilingual report generation for `id`, `content`, and `graphic`
+- `core/reporting.py` owns bilingual report generation for `id`, `content`, `graphic`, and `video`
 - `report.md` and generated/copied artifacts should live in the same output bundle
 - Reflection v2 can route learning into:
   - `knowledge/general/human_feedback_lessons.md`
@@ -49,6 +52,7 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - Images, screenshots, rendered PDF previews, and exported design frames route to `graphic`
 - Articulate, Rise, Storyline, and SCORM-style prompts route to `id`
 - Explicit course-level collaborative review requests should route to `/cqc` or `$cqc`
+- Explicit local-video review requests with a video path plus `.srt` should route to `/vqc` or `$vqc`
 - If the router LLM is disabled, the repo falls back to heuristics
 
 ## Source handling rules
@@ -58,6 +62,7 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - If Figma MCP is rate-limited or unavailable, prefer exported screenshots or locally rendered artifacts over claiming direct frame inspection
 - Web uploads are persisted under `.web-runtime/jobs/<job_id>/inputs/...`
 - Final evidence and reports live under `outputs/...`
+- `/vqc` keeps `report.md` plus sibling video artifacts in one output bundle under `outputs/...`
 
 ## Important files
 - `core/config.py`: env loading and model/provider mapping
@@ -85,13 +90,14 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - Default router/content/id provider: `groq`
 - Default graphic provider: `groq` vision model
 - Default reflection provider: `google`
+- Default VQC ASR backend: OpenAI transcription via `gpt-4o-mini-transcribe`
 - `test-*` and `fake-*` API keys intentionally disable live LLM calls and trigger fallback logic in tests
 - If the current interpreter does not have `langchain-groq` or `langchain-google-genai` installed, `core/llm.py` falls back to direct HTTP calls for Groq and Gemini so live text/report translation can still run
 
 ## Working conventions
 - Keep runtime web files only in `web/`; do not move frontend assets into `docs/`
 - Reports must stay bilingual in a single `report.md`
-- `id`, `cg`, and `fg` runs should always export `report.md`, even when the review is partial or blocked
+- `id`, `cg`, `fg`, and `vqc` runs should always export `report.md`, even when the review is partial or blocked
 - `report.md` and all generated/copied evidence for the same QC pass should stay in one output bundle
 - `docs/communication.md` is an append-only runtime log; treat it as generated operational history
 - Reflection/knowledge behavior now uses scoped retrieval. Knowledge load order is:

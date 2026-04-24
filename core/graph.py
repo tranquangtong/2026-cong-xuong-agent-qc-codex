@@ -6,7 +6,9 @@ from agents.content_agent import content_node
 from agents.graphic_agent import graphic_node
 from agents.id_agent import id_node
 from agents.reflection_agent import reflection_node
+from agents.video_agent import video_node
 from core.cqc import prepare_cqc_state
+from core.vqc import prepare_vqc_state
 from agents.router import router_node
 from core.content_sources import build_resolved_content_text, resolve_content_sources
 from core.reporting import generate_markdown_report
@@ -63,12 +65,14 @@ def maybe_build_langgraph() -> StateGraph | None:
     graph.add_node("id", id_node)
     graph.add_node("content", content_node)
     graph.add_node("graphic", graphic_node)
+    graph.add_node("video", video_node)
     graph.add_node("reflection", reflection_node)
     graph.add_conditional_edges(START, start_routing, {"router": "router", "specialist": "id", "reflection": "reflection"})
     graph.add_edge("router", "id")
     graph.add_edge("id", "reflection")
     graph.add_edge("content", "reflection")
     graph.add_edge("graphic", "reflection")
+    graph.add_edge("video", "reflection")
     graph.add_edge("reflection", END)
     return graph
 
@@ -105,6 +109,8 @@ def invoke_workflow(
 
     if state.get("flow_type") == "cqc":
         state = _merge_states(state, [prepare_cqc_state(state)])
+    if state.get("flow_type") == "vqc":
+        state = _merge_states(state, [prepare_vqc_state(state)])
 
     route = start_routing(state)
     if route == "router":
@@ -133,6 +139,8 @@ def invoke_workflow(
             specialist_updates.append(content_node(state))
         elif agent_name == "graphic":
             specialist_updates.append(graphic_node(state))
+        elif agent_name == "video":
+            specialist_updates.append(video_node(state))
 
     if specialist_updates:
         state = _merge_states(state, specialist_updates)

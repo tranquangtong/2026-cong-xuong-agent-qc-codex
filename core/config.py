@@ -31,6 +31,7 @@ def _load_dotenv(project_root: Path) -> None:
 
 @dataclass(slots=True)
 class AppConfig:
+    openai_api_key: str
     google_api_key: str
     groq_api_key: str
     router_provider: str
@@ -45,8 +46,14 @@ class AppConfig:
     id_model: str
     reflection_provider: str
     reflection_model: str
+    video_asr_provider: str
+    video_asr_model: str
+    video_frame_interval_seconds: int
+    video_max_midpoint_frames_per_run: int
 
     def api_key_for_provider(self, provider: str) -> str:
+        if provider == "openai":
+            return self.openai_api_key
         if provider == "groq":
             return self.groq_api_key
         if provider == "google":
@@ -57,6 +64,7 @@ class AppConfig:
     def load(cls, project_root: Path) -> "AppConfig":
         _load_dotenv(project_root)
         return cls(
+            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
             google_api_key=os.getenv("GOOGLE_API_KEY", ""),
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
             router_provider=os.getenv("ROUTER_PROVIDER", "groq"),
@@ -77,6 +85,10 @@ class AppConfig:
             id_model=os.getenv("ID_MODEL", "llama-3.3-70b-versatile"),
             reflection_provider=os.getenv("REFLECTION_PROVIDER", "google"),
             reflection_model=os.getenv("REFLECTION_MODEL", "gemini-2.5-flash"),
+            video_asr_provider=os.getenv("VIDEO_ASR_PROVIDER", "openai"),
+            video_asr_model=os.getenv("VIDEO_ASR_MODEL", "gpt-4o-mini-transcribe"),
+            video_frame_interval_seconds=int(os.getenv("VIDEO_FRAME_INTERVAL_SECONDS", "2")),
+            video_max_midpoint_frames_per_run=int(os.getenv("VIDEO_MAX_MIDPOINT_FRAMES_PER_RUN", "200")),
         )
 
     def validate_for_agents(self, next_agents: list[str]) -> None:
@@ -87,6 +99,8 @@ class AppConfig:
                 required_keys.append(("GROQ_API_KEY", self.groq_api_key))
             elif provider == "google":
                 required_keys.append(("GOOGLE_API_KEY", self.google_api_key))
+            elif provider == "openai":
+                required_keys.append(("OPENAI_API_KEY", self.openai_api_key))
 
         if not next_agents:
             require_provider(self.router_provider)
@@ -100,6 +114,9 @@ class AppConfig:
                 require_provider(self.content_provider)
             if "graphic" in next_agents:
                 require_provider(self.graphic_provider)
+            if "video" in next_agents:
+                # Video analysis itself should still run without ASR credentials.
+                pass
             if "reflection" in next_agents:
                 require_provider(self.reflection_provider)
 

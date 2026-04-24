@@ -5,6 +5,7 @@ This repository is a multi-agent QC factory for e-learning review. The working m
 - `id`: instructional design QA for browser-like course flows, interactions, quiz logic, navigation, accessibility, and learner-facing on-screen text
 - `graphic`: visual QA for Figma links, screenshots, and rendered design artifacts, including layout, spacing, hierarchy, readability, and WCAG 2.2 visual risks
 - `content`: content QA for storyboard copy, subtitles, grammar, spelling, British English, terminology, and learner-facing clarity
+- `video`: local learning video QA for `video + .srt` bundles, sampled frames, subtitle quality, and subtitle-to-audio sync
 - `reflect`: lesson capture from feedback or findings so future QC passes improve over time
 
 Reflection currently uses a `reflect v2` style durable-learning loop:
@@ -20,7 +21,7 @@ The runtime entrypoints in this repo are:
 - Specialist agents in `agents/`
 - Repo-local Codex workflows in `.agents/skills/`
 
-Every QC run for `id`, `graphic`, or `content` must end in a bilingual `report.md` bundle under `outputs/`.
+Every QC run for `id`, `graphic`, `content`, or `video` must end in a bilingual `report.md` bundle under `outputs/`.
 
 ## Command And Mode Mapping
 
@@ -30,6 +31,7 @@ The canonical mode mapping is:
 - `/fg` -> `graphic`
 - `/cg` -> `content`
 - `/cqc` -> collaborative course QC flow using shared browser evidence for `id` + `content` + `graphic`
+- `/vqc` -> local video QC flow using shared collector evidence for `content` + `graphic` + `video`
 - `/reflect` -> `reflect`
 
 The project utility mapping is:
@@ -47,6 +49,7 @@ Default `/upgit` behavior:
 When working in Codex chat, prefer the workflow skills:
 
 - `$cqc`
+- `$vqc`
 - `$id-qc`
 - `$fg-qc`
 - `$cg-qc`
@@ -59,6 +62,7 @@ Use explicit workflow skills when the user clearly knows the target mode. If the
 The current repo-local skill folders are:
 
 - `.agents/skills/cqc`
+- `.agents/skills/vqc`
 - `.agents/skills/id-qc`
 - `.agents/skills/fg-qc`
 - `.agents/skills/cg-qc`
@@ -81,9 +85,11 @@ The active knowledge files are:
 Apply these routing rules consistently:
 
 - Explicit `/cqc` requests route to the collaborative course QC flow rather than a single specialist mode
+- Explicit `/vqc` requests route to the local video QC flow rather than a single specialist mode
 - Articulate, Rise, Storyline, SCORM, browser-flow, interaction, quiz, knowledge-check, navigation, and accessibility requests route to `id`
 - Figma links, screenshots, and rendered design artifacts such as poster exports or PDF previews route to `graphic`
 - Storyboard copy, subtitles, spelling, grammar, terminology, and document artifacts such as `pdf`, `csv`, and `docx` route to `content`
+- Local video requests with `.mp4`, `.mov`, `.mkv`, `.webm`, `.srt`, subtitle timing, or audio sync intent route to `video` plus supporting `content` and `graphic` review when `/vqc` is requested
 - Figma links that are explicitly about storyboard copy or text QA usually require both `graphic` and `content`, but `content` must only claim text coverage if the frame text is actually resolved
 - Manual QA feedback and reusable process lessons route to `reflect`
 - Cache, temp-file, or workspace cleanup requests route to the `cleanup` skill rather than a QA mode
@@ -97,6 +103,7 @@ Never pretend you inspected evidence that you did not actually access.
 
 - If you used browser tooling such as Playwright, state what path or states were actually traversed
 - If you used Figma tooling, state which frame, node, or screenshot evidence was actually reviewed
+- If you used the video collector, state which local video file, subtitle file, sampled frames, and ASR status were actually available
 - If a Figma link is present but no text was resolved for content review, say so plainly
 - If only prompt text is available, treat the output as a constrained QA pass and disclose the limitation
 - If the user asks for section-level ID review, only claim completion when all visible interactives, revealed text, and reachable knowledge-check states within scope were exercised
@@ -109,7 +116,7 @@ When evidence is partial, report the missing coverage as part of the findings or
 
 All reports and QC summaries should follow these expectations:
 
-- Export a `report.md` file after every `id`, `graphic`, or `content` test pass, even when the review is partial or blocked
+- Export a `report.md` file after every `id`, `graphic`, `content`, or `video` test pass, even when the review is partial or blocked
 - Write the report under an `outputs/` bundle and mention the report path in the chat response when possible
 - Keep findings actionable and grounded in evidence
 - Use the supported severity levels: `Critical`, `Major`, `Minor`, `Suggestion`, `Info`
@@ -136,12 +143,14 @@ Artifact behavior:
 - Preferred structure is `outputs/<bundle>/report.md` plus `outputs/<bundle>/artifacts/...`
 - Do not create a second output bundle for the same QC pass just because artifacts were prepared before report generation
 - The coordinating flow or merger is responsible for synthesizing participating-agent outputs into the final `report.md`
+- For `/vqc`, keep `video_manifest.json`, `subtitles.json`, `asr_transcript.json`, `frame_index.json`, and extracted frames in the same output bundle as `report.md`
 
 ## Tooling Guidance
 
 This repo may be used in environments with or without plugins and MCP tools.
 
 - If browser tooling is available, use it for `id` work that requires real interaction coverage
+- For `video` QA, V1 uses local artifact collection with `ffmpeg`/`ffprobe`, subtitle parsing, sampled frames, and optional OpenAI ASR rather than browser playback or desktop automation
 - If Figma tooling is available, use it for `graphic` work that needs live frame or node inspection
 - If Figma MCP is unavailable, blocked, or rate-limited, fall back to exported screenshots, PDF renders, or other image artifacts rather than pretending the raw link was inspected successfully
 - For `graphic` QA, rendered screenshots and exported frames are stronger evidence than a raw link alone

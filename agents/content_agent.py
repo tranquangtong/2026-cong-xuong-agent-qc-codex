@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from core.content_sources import summarize_content_sources
 from core.knowledge import get_knowledge_context
 from core.llm import invoke_multimodal_model, invoke_text_model, is_llm_enabled, parse_json_object
@@ -9,6 +11,7 @@ from tools.text_tools import check_british_english, extract_quoted_labels, make_
 
 
 MAX_CHUNK_CHARS = 4500
+FILE_LIKE_LABEL_PATTERN = re.compile(r"^[A-Za-z]:\\|[\\/]|^\.\w+$")
 
 
 def _build_finding(
@@ -144,6 +147,8 @@ def _fallback_text_findings(text: str) -> list[QAFinding]:
         content_index += 1
 
     for label in extract_quoted_labels(text):
+        if FILE_LIKE_LABEL_PATTERN.search(label):
+            continue
         if label and label.upper() != label:
             findings.append(
                 _build_finding(
@@ -167,7 +172,7 @@ def _fallback_content_review(state: AgentState) -> list[QAFinding]:
     warning_findings = _source_warning_findings(sources)
     text = state.get("resolved_content_text", "").strip() or state.get("user_text", "")
     heuristic_findings = _fallback_text_findings(text)
-    findings = [*warning_findings, *heuristic_findings]
+    findings = [*_build_video_subtitle_findings(state), *warning_findings, *heuristic_findings]
 
     if findings:
         return _dedupe_findings(findings)
@@ -184,6 +189,74 @@ def _fallback_content_review(state: AgentState) -> list[QAFinding]:
             "content",
         )
     ]
+
+
+def _build_video_subtitle_findings(state: AgentState) -> list[QAFinding]:
+    subtitles = list(state.get("video_probe", {}).get("subtitles", []))
+    findings: list[QAFinding] = []
+    index = 1
+    for cue in subtitles:
+        text = str(cue.get("text", "")).strip()
+        if not text:
+            continue
+        duration = float(cue.get("duration", 0.0) or 0.0)
+        char_count = int(cue.get("char_count", len(text.replace("\n", " ").strip())) or 0)
+        word_count = int(cue.get("word_count", len(text.split())) or 0)
+        cps = char_count / duration if duration > 0 else 999.0
+        wpm = (word_count / duration) * 60 if duration > 0 else 999.0
+        if cps > 22:
+            findings.append(
+                _build_finding(
+                    "C",
+                    index,
+                    "Major" if cps > 28 else "Minor",
+                    "Subtitle Readability",
+                    (
+                        f"Cue {cue.get('cue_index')} at {cue.get('start_timecode')} -> {cue.get('end_timecode')} "
+                        f"renders {char_count} characters over {duration:.2f}s ({cps:.1f} chars/sec)."
+                    ),
+                    "Learners may not have enough time to comfortably read the subtitle.",
+                    "Shorten the subtitle, split it into smaller cues, or extend the cue duration.",
+                    "content",
+                )
+            )
+            index += 1
+        if wpm > 210:
+            findings.append(
+                _build_finding(
+                    "C",
+                    index,
+                    "Major" if wpm > 250 else "Minor",
+                    "Subtitle Reading Speed",
+                    (
+                        f"Cue {cue.get('cue_index')} at {cue.get('start_timecode')} -> {cue.get('end_timecode')} "
+                        f"requires about {wpm:.0f} words per minute."
+                    ),
+                    "Subtitle pacing may be too fast for comfortable reading.",
+                    "Reduce subtitle density or increase the cue duration so the reading speed comes down.",
+                    "content",
+                )
+            )
+            index += 1
+        text_lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if len(text_lines) >= 2 and any(len(line) > 42 for line in text_lines):
+            findings.append(
+                _build_finding(
+                    "C",
+                    index,
+                    "Minor",
+                    "Subtitle Line Break",
+                    (
+                        f"Cue {cue.get('cue_index')} at {cue.get('start_timecode')} -> {cue.get('end_timecode')} "
+                        f"contains a long subtitle line that may wrap awkwardly: '{text}'."
+                    ),
+                    "Uneven subtitle breaks can reduce readability and look unpolished on screen.",
+                    "Rebalance the line break so each subtitle line is shorter and more visually even.",
+                    "content",
+                )
+            )
+            index += 1
+    return findings
 
 
 def _normalize_llm_findings(raw_findings: list[dict], source: ContentSource) -> list[QAFinding]:
@@ -328,6 +401,7 @@ def run_content_review(state: AgentState) -> list[QAFinding]:
     api_key = config.api_key_for_provider(config.content_provider)
     sources = state.get("content_sources", [])
     warning_findings = _source_warning_findings(sources)
+    deterministic_video_findings = _build_video_subtitle_findings(state)
     if not is_llm_enabled(config.content_provider, api_key):
         return _fallback_content_review(state)
 
@@ -344,7 +418,7 @@ def run_content_review(state: AgentState) -> list[QAFinding]:
             fallback_state["resolved_content_text"] = resolved_text
             llm_findings.extend(_fallback_content_review(fallback_state))
 
-    combined = [*warning_findings, *llm_findings]
+    combined = [*deterministic_video_findings, *warning_findings, *llm_findings]
     if combined:
         return _dedupe_findings(combined)
     return _fallback_content_review(state)

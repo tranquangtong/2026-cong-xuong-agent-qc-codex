@@ -14,6 +14,7 @@ COMMAND_TO_AGENT = {
     "/cg": ["content"],
     "/fg": ["graphic"],
     "/cqc": ["id", "content", "graphic"],
+    "/vqc": ["content", "graphic", "video"],
     "/reflect": ["reflection"],
 }
 
@@ -43,6 +44,8 @@ def detect_flow_type(raw_text: str) -> str:
     text = raw_text.strip().lower()
     if text.startswith("/cqc"):
         return "cqc"
+    if text.startswith("/vqc"):
+        return "vqc"
     return ""
 
 

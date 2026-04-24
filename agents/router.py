@@ -50,6 +50,7 @@ def _fallback_route_request(state: AgentState) -> RouteDecision:
 
     content_markers = (
         "subtitle",
+        ".srt",
         "grammar",
         "spelling",
         "copy",
@@ -63,6 +64,10 @@ def _fallback_route_request(state: AgentState) -> RouteDecision:
     graphic_markers = ("design", "figma", "frame", "screen", "visual", "graphic")
     if any(marker in user_text for marker in graphic_markers):
         next_agents.append("graphic")
+
+    video_markers = (".mp4", ".mov", ".mkv", ".webm", "/vqc", "video qc", "subtitle timing", "audio sync")
+    if any(marker in user_text for marker in video_markers):
+        next_agents.extend(["content", "graphic", "video"])
 
     if not next_agents:
         next_agents = ["id", "content"]
@@ -93,6 +98,7 @@ Available agents:
 - "id": instructional design, browser flow, quiz logic, navigation, accessibility, grammar on screen
 - "content": content QA for storyboard copy, subtitles, grammar/spelling, terminology, and attached document artifacts such as pdf/csv/docx
 - "graphic": Figma-linked or screenshot-based graphic QA, layout, hierarchy, spacing, and WCAG visual accessibility
+- "video": local video QC, subtitle/audio alignment, frame sample review support, and timing mismatch detection
 
 Return strict JSON with this shape:
 {"next":["id","content","graphic"],"reasoning":"short explanation"}
@@ -123,7 +129,7 @@ Resolved sources:
             user_prompt=user_prompt,
         )
         payload = parse_json_object(raw_response)
-        next_agents = [agent for agent in payload.get("next", []) if agent in {"id", "content", "graphic"}]
+        next_agents = [agent for agent in payload.get("next", []) if agent in {"id", "content", "graphic", "video"}]
         if not next_agents:
             return _fallback_route_request(state)
         return {

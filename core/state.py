@@ -23,7 +23,7 @@ class QAFinding(TypedDict):
 
 
 class ContentSource(TypedDict, total=False):
-    kind: Literal["document", "figma", "text"]
+    kind: Literal["document", "figma", "text", "video", "subtitle", "audio"]
     uri: str
     display_name: str
     format: str
@@ -32,6 +32,7 @@ class ContentSource(TypedDict, total=False):
     location_hints: list[str]
     extraction_mode: str
     warnings: list[str]
+    metadata: dict[str, Any]
 
 
 class KnowledgeEntry(TypedDict, total=False):
@@ -71,7 +72,7 @@ class ReflectionRecord(TypedDict, total=False):
 
 
 class RouteDecision(TypedDict):
-    next: List[Literal["content", "id", "graphic", "reflection", "FINISH"]]
+    next: List[Literal["content", "id", "graphic", "video", "reflection", "FINISH"]]
     reasoning: str
 
 
@@ -119,6 +120,7 @@ class AgentState(TypedDict, total=False):
     content_sources: list[ContentSource]
     resolved_content_text: str
     browser_probe: Any
+    video_probe: dict[str, Any]
     collector_summary: str
     requested_scope: dict[str, Any]
     coverage_map: dict[str, Any]

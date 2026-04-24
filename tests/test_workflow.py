@@ -18,6 +18,7 @@ from core.reporting import generate_markdown_report
 from core.state import merge_findings
 from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
 from agents.id_agent import run_id_review
+from agents.video_agent import run_video_review
 from main import auto_detect_agents, detect_flow_type, normalize_command
 from tools.wcag_contrast import contrast_ratio
 
@@ -182,14 +183,24 @@ class WorkflowTests(unittest.TestCase):
         )
         self.pdf_path = self.fixture_dir / "lesson notes.pdf"
         self.pdf_path.write_bytes(_pdf_bytes_with_text("The User should organize color and behavior.")) 
+        self.video_path = self.fixture_dir / "lesson clip.mp4"
+        self.video_path.write_text("fake video placeholder", encoding="utf-8")
+        self.srt_path = self.fixture_dir / "lesson clip.srt"
+        self.srt_path.write_text(
+            "1\n00:00:00,000 --> 00:00:01,000\nWelcome to this onboarding lesson.\n\n"
+            "2\n00:00:01,100 --> 00:00:02,000\nThis subtitle line is intentionally very very very long for one short cue.\n",
+            encoding="utf-8",
+        )
 
         os.environ["AGENT_QC_ROOT"] = str(self.temp_dir)
+        os.environ["OPENAI_API_KEY"] = "test-openai"
         os.environ["GROQ_API_KEY"] = "test-groq"
         os.environ["GOOGLE_API_KEY"] = "test-google"
         self.config = AppConfig.load(self.temp_dir)
 
     def tearDown(self) -> None:
         os.environ.pop("AGENT_QC_ROOT", None)
+        os.environ.pop("OPENAI_API_KEY", None)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_merge_findings_preserves_unique_ids(self) -> None:
@@ -307,9 +318,121 @@ await page.evaluate('() => (...)');
         self.assertEqual(agents, ["id", "content", "graphic"])
         self.assertEqual(detect_flow_type("/cqc review this articulate lesson"), "cqc")
 
+    def test_vqc_command_normalization(self) -> None:
+        payload, agents = normalize_command("/vqc review this local video")
+        self.assertEqual(payload, "review this local video")
+        self.assertEqual(agents, ["content", "graphic", "video"])
+        self.assertEqual(detect_flow_type("/vqc review this local video"), "vqc")
+
     def test_auto_detect_routes_document_paths_to_content(self) -> None:
         agents = auto_detect_agents(f"Please QC '{self.csv_path}'", [], self.temp_dir)
         self.assertEqual(agents, ["content"])
+
+    @patch("core.vqc.shutil.which", side_effect=lambda name: None if name in {"ffmpeg", "ffprobe"} else "")
+    def test_vqc_flow_exports_report_when_runtime_dependencies_are_missing(self, _mock_which) -> None:
+        result = invoke_workflow(
+            user_text=f"Review '{self.video_path}' with subtitles '{self.srt_path}'",
+            raw_text=f"/vqc Review '{self.video_path}' with subtitles '{self.srt_path}'",
+            image_paths=[],
+            next_agents=["content", "graphic", "video"],
+            project_root=self.temp_dir,
+            config=self.config,
+            flow_type="vqc",
+        )
+
+        self.assertTrue(Path(result["report_path"]).exists())
+        report_text = Path(result["report_path"]).read_text(encoding="utf-8")
+        self.assertIn("VQC Collector Summary", report_text)
+        self.assertIn("ffmpeg is not available in PATH", report_text)
+        self.assertTrue((Path(result["output_dir"]) / "artifacts" / "subtitles.json").exists())
+        self.assertTrue((Path(result["output_dir"]) / "artifacts" / "video_manifest.json").exists())
+        self.assertTrue((Path(result["output_dir"]) / "artifacts" / "asr_transcript.json").exists())
+
+    @patch("core.vqc.invoke_openai_transcription")
+    @patch("core.vqc._extract_frame_samples")
+    @patch("core.vqc._extract_audio_track", return_value=(True, ""))
+    @patch("core.vqc._probe_video_manifest")
+    @patch("core.vqc.shutil.which", side_effect=lambda name: "C:/bin/tool.exe")
+    def test_vqc_flow_collects_video_artifacts_and_alignment_findings(
+        self,
+        _mock_which,
+        mock_manifest,
+        _mock_audio,
+        mock_frames,
+        mock_transcription,
+    ) -> None:
+        frame_path = self.fixture_dir / "frame_0001.png"
+        frame_path.write_text("frame", encoding="utf-8")
+        mock_manifest.return_value = {
+            "duration_seconds": 5.0,
+            "format_name": "mp4",
+            "size_bytes": 1234,
+            "video_stream": {"width": 1280, "height": 720, "codec_name": "h264", "avg_frame_rate": "30/1"},
+            "audio_stream": {"codec_name": "aac", "sample_rate": "48000", "channels": 2},
+        }
+        mock_frames.return_value = [
+            {
+                "timestamp": 0.5,
+                "timestamp_label": "00:00:00.500",
+                "cue_index": 1,
+                "sample_type": "subtitle-start",
+                "image_path": str(frame_path),
+                "status": "ok",
+            }
+        ]
+        mock_transcription.return_value = {
+            "segments": [
+                {"start": 0.0, "end": 1.0, "text": "Welcome to this compliance course."},
+                {"start": 1.1, "end": 2.0, "text": "Short line."},
+            ]
+        }
+
+        result = invoke_workflow(
+            user_text=f"Review '{self.video_path}' with subtitles '{self.srt_path}'",
+            raw_text=f"/vqc Review '{self.video_path}' with subtitles '{self.srt_path}'",
+            image_paths=[],
+            next_agents=["content", "graphic", "video"],
+            project_root=self.temp_dir,
+            config=self.config,
+            flow_type="vqc",
+        )
+
+        source_agents = {finding["source_agent"] for finding in result["findings"]}
+        self.assertIn("content", source_agents)
+        self.assertIn("graphic", source_agents)
+        self.assertIn("video", source_agents)
+        self.assertTrue(any(finding["area"] == "Subtitle And Audio Mismatch" for finding in result["findings"]))
+        self.assertTrue(any(finding["area"] == "Subtitle Readability" for finding in result["findings"]))
+        self.assertIn(str(frame_path), result.get("image_paths", []))
+        report_text = Path(result["report_path"]).read_text(encoding="utf-8")
+        self.assertIn("asr_status=ok", report_text)
+        self.assertIn(self.video_path.name, report_text)
+        self.assertIn(self.srt_path.name, report_text)
+
+    def test_video_agent_flags_uncaptioned_speech(self) -> None:
+        findings = run_video_review(
+            {
+                "project_root": self.temp_dir,
+                "video_probe": {
+                    "warnings": [],
+                    "asr_status": "ok",
+                    "subtitles": [
+                        {
+                            "cue_index": 1,
+                            "start": 0.0,
+                            "end": 1.0,
+                            "start_timecode": "00:00:00.000",
+                            "end_timecode": "00:00:01.000",
+                            "text": "Hello there",
+                        }
+                    ],
+                    "asr_segments": [
+                        {"start": 2.0, "end": 3.0, "text": "This speech is not captioned"}
+                    ],
+                },
+            }
+        )
+        self.assertTrue(any(finding["area"] == "Uncaptioned Speech Segment" for finding in findings))
 
     def test_resolve_content_sources_extracts_csv(self) -> None:
         sources = resolve_content_sources(self.temp_dir, f"Review '{self.csv_path}'")
