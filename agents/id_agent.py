@@ -8,6 +8,7 @@ from core.knowledge import get_knowledge_context
 from core.llm import invoke_text_model, is_llm_enabled, parse_json_object
 from core.state import AgentState, ContentSource, QAFinding
 from core.utils import log_communication
+from core.wcag import build_wcag_findings
 from tools.text_tools import check_british_english, extract_quoted_labels, make_finding_id
 
 
@@ -120,10 +121,10 @@ def _probe_state_summary(probe: BrowserProbeResult | None) -> str:
     return "; ".join(labels[:6])
 
 
-def _fallback_id_review(state: AgentState, probe: BrowserProbeResult | None = None) -> list[QAFinding]:
+def _fallback_id_review(state: AgentState, probe: BrowserProbeResult | None = None, start_index: int = 1) -> list[QAFinding]:
     text = state.get("user_text", "")
     findings: list[QAFinding] = []
-    index = 1
+    index = start_index
 
     if probe:
         if _probe_has_lesson_evidence(probe):
@@ -267,9 +268,9 @@ def _fallback_id_review(state: AgentState, probe: BrowserProbeResult | None = No
     return findings
 
 
-def _normalize_llm_findings(raw_findings: list[dict]) -> list[QAFinding]:
+def _normalize_llm_findings(raw_findings: list[dict], start_index: int = 1) -> list[QAFinding]:
     normalized: list[QAFinding] = []
-    for index, item in enumerate(raw_findings, start=1):
+    for index, item in enumerate(raw_findings, start=start_index):
         normalized.append(
             _build_finding(
                 index,
@@ -365,13 +366,20 @@ def run_id_review(state: AgentState) -> tuple[list[QAFinding], list[ContentSourc
     if probe_source:
         content_sources.append(probe_source)
 
+    wcag_state = dict(state)
+    if probe:
+        wcag_state["browser_probe"] = probe
+    wcag_state["content_sources"] = content_sources
+    wcag_findings = build_wcag_findings(wcag_state, prefix="ID", source_agent="id")
+    next_index = len(wcag_findings) + 1
+
     if probe and not _probe_has_lesson_evidence(probe):
-        return _fallback_id_review(state, probe), content_sources
+        return [*wcag_findings, *_fallback_id_review(state, probe, start_index=next_index)], content_sources
 
     config = state["config"]
     api_key = config.api_key_for_provider(config.id_provider)
     if not is_llm_enabled(config.id_provider, api_key):
-        return _fallback_id_review(state, probe), content_sources
+        return [*wcag_findings, *_fallback_id_review(state, probe, start_index=next_index)], content_sources
 
     knowledge_context = get_knowledge_context(state["project_root"], mode="id", state=state)
     system_prompt = f"""
@@ -428,10 +436,12 @@ Rules:
             user_prompt=user_prompt,
         )
         payload = parse_json_object(raw_response)
-        findings = _sanitize_llm_findings(_normalize_llm_findings(payload.get("findings", [])), probe)
-        return findings or _fallback_id_review(state, probe), content_sources
+        findings = _sanitize_llm_findings(_normalize_llm_findings(payload.get("findings", []), start_index=next_index), probe)
+        if findings:
+            return [*wcag_findings, *findings], content_sources
+        return [*wcag_findings, *_fallback_id_review(state, probe, start_index=next_index)], content_sources
     except Exception:
-        return _fallback_id_review(state, probe), content_sources
+        return [*wcag_findings, *_fallback_id_review(state, probe, start_index=next_index)], content_sources
 
 
 def id_node(state: AgentState) -> AgentState:

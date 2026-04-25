@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from core.knowledge import get_knowledge_context
 from core.llm import invoke_multimodal_model, invoke_text_model, is_llm_enabled, parse_json_object
 from core.state import AgentState, QAFinding
 from core.utils import log_communication
+from core.wcag import build_wcag_findings
 from tools.text_tools import make_finding_id
 from tools.wcag_contrast import audit_image_contrast
 
@@ -90,53 +90,13 @@ def _normalize_llm_findings(raw_findings: list[dict], start_index: int = 1) -> l
 
 
 def _build_deterministic_wcag_findings(state: AgentState, start_index: int = 1) -> list[QAFinding]:
-    audit = audit_image_contrast(state.get("image_paths", []))
-    findings: list[QAFinding] = []
-    index = start_index
-
-    for issue in audit.get("issues", []):
-        image_name = Path(str(issue["image_path"])).name
-        size_label = "large text" if issue["large_text"] else "normal text"
-        findings.append(
-            _build_finding(
-                index,
-                "Major" if issue["threshold"] >= 4.5 else "Minor",
-                "WCAG Contrast Ratio",
-                (
-                    f"{image_name}: OCR sample '{issue['label']}' measured approximately "
-                    f"{issue['ratio']:.2f}:1 against the local background "
-                    f"({issue['foreground_hex']} on {issue['background_hex']}). "
-                    f"This is below the WCAG AA threshold of {issue['threshold']:.1f}:1 for {size_label}."
-                ),
-                (
-                    "Low text contrast can reduce readability, especially when the course is viewed at "
-                    "normal playback size or on lower-quality displays."
-                ),
-                (
-                    "Increase the luminance difference between the text and its immediate background, "
-                    "or enlarge/promote the text so it meets the appropriate WCAG AA threshold."
-                ),
-            )
-        )
-        index += 1
-
-    for limitation in audit.get("limitations", []):
-        findings.append(
-            _build_finding(
-                index,
-                "Info",
-                "WCAG Contrast Coverage",
-                limitation,
-                "Deterministic contrast coverage was limited for part of the supplied evidence.",
-                (
-                    "Install the missing OCR/image runtime dependencies or provide clearer rendered "
-                    "screenshots so the checker can measure local text contrast."
-                ),
-            )
-        )
-        index += 1
-
-    return findings
+    return build_wcag_findings(
+        state,
+        prefix="FG",
+        source_agent="graphic",
+        start_index=start_index,
+        contrast_auditor=audit_image_contrast,
+    )
 
 
 def _has_actionable_wcag_findings(findings: list[QAFinding]) -> bool:

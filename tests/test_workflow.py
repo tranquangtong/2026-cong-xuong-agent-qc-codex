@@ -17,6 +17,7 @@ from core.knowledge import get_knowledge_context, load_knowledge_entries, maybe_
 from core.reporting import generate_markdown_report
 from core.state import merge_findings
 from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
+from core.wcag import build_wcag_findings
 from agents.id_agent import run_id_review
 from agents.video_agent import run_video_review
 from main import auto_detect_agents, detect_flow_type, normalize_command
@@ -214,6 +215,40 @@ class WorkflowTests(unittest.TestCase):
     def test_contrast_ratio_matches_wcag_reference_values(self) -> None:
         self.assertAlmostEqual(contrast_ratio((0, 0, 0), (255, 255, 255)), 21.0, places=2)
         self.assertAlmostEqual(contrast_ratio((119, 119, 119), (255, 255, 255)), 4.48, places=2)
+
+    def test_wcag_adapter_reports_browser_accessible_name_issue(self) -> None:
+        findings = build_wcag_findings(
+            {
+                "messages": [],
+                "findings": [],
+                "sender": "",
+                "next_agents": ["id"],
+                "routing_reason": "",
+                "user_text": "Review accessibility",
+                "raw_text": "/id Review accessibility",
+                "image_paths": [],
+                "project_root": self.temp_dir,
+                "config": self.config,
+                "output_dir": str(self.temp_dir / "outputs"),
+                "content_sources": [],
+                "resolved_content_text": "",
+                "browser_probe": {
+                    "visited_states": [
+                        {
+                            "step": "quiz feedback",
+                            "actionables": [
+                                {"role": "button", "name": "", "tag": "button"},
+                            ],
+                        }
+                    ]
+                },
+            },
+            prefix="ID",
+            source_agent="id",
+        )
+
+        self.assertTrue(any(finding["area"] == "WCAG Accessible Name" for finding in findings))
+        self.assertTrue(any("4.1.2 Name, Role, Value" in finding["evidence"] for finding in findings))
 
     def test_manual_reflection_updates_human_feedback(self) -> None:
         result = invoke_workflow(

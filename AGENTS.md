@@ -69,6 +69,7 @@ The current repo-local skill folders are:
 - `.agents/skills/qc-reflect`
 - `.agents/skills/cleanup`
 - `.agents/skills/upgit`
+- `.agents/skills/wcag-qc`
 
 The active knowledge files are:
 
@@ -158,3 +159,13 @@ This repo may be used in environments with or without plugins and MCP tools.
 - For document-based review, supported ingestion remains `pdf`, `csv`, and `docx`
 - When screenshots or rendered previews are created during review, store them in the same output bundle as the final `report.md`
 - For quiz review, prioritize correct-path and wrong-path learner outcomes, explanation quality, grammar/spelling, completeness, and post-quiz progression. Do not over-weight pre-submit states if they do not materially affect the learner experience.
+
+## Implementation Discipline
+
+Apply these rules when changing this repository:
+
+- Prefer small, targeted edits that directly support the requested QC behavior
+- Do not refactor unrelated agents, reporting, knowledge, or runtime artifact handling while fixing a narrow issue
+- Before implementing larger changes, identify the expected verification artifact or test, such as `report.md`, a JSON artifact, a unit test, or a dependency check
+- Avoid speculative abstractions; add shared helpers only when at least two agents or flows need the same behavior
+- If local tooling prevents full verification, state the limitation rather than implying the change was fully tested

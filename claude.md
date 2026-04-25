@@ -114,6 +114,13 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - Every participating specialist should still contribute a result summary even when no major defect is found; the coordinating flow/report then merges that into the final `report.md`
 - Save edited text files as UTF-8
 
+## Coding agent behavior
+- State assumptions before making non-trivial code changes, especially when scope, evidence, or runtime dependencies are ambiguous
+- Prefer the smallest implementation that satisfies the requested QC behavior; avoid speculative abstractions or future-facing options unless the current task needs them
+- Keep edits surgical: touch only files needed for the requested change, preserve existing style, and do not refactor adjacent code opportunistically
+- Define verification before or during implementation; for bug fixes, prefer a reproducing test or artifact check, and for QC-flow changes, verify the expected report or JSON artifact output
+- If a change cannot be fully verified because of missing local tooling, record the limitation explicitly
+
 ## Current caveats worth knowing
 - The web API exposes `id`, `cg`, and `fg` modes directly; it does not expose the free router path as a user-facing mode
 - Auth helpers exist in `api/auth.py`, but the current web UI is effectively running in no-auth mode
