@@ -16,7 +16,7 @@ from core.graph import invoke_workflow
 from core.knowledge import get_knowledge_context, load_knowledge_entries, maybe_consolidate
 from core.reporting import generate_markdown_report
 from core.state import merge_findings
-from core.utils import cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
+from core.utils import checkgit_project, cleanup_project, ensure_text_file, make_output_bundle_dir, upgit_project
 from core.wcag import build_wcag_findings
 from agents.id_agent import run_id_review
 from agents.video_agent import run_video_review
@@ -285,6 +285,24 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue((artifacts_dir / "preview.png").exists())
         output_bundles = [path for path in (self.temp_dir / "outputs").iterdir() if path.is_dir()]
         self.assertEqual(len(output_bundles), 1)
+
+    def test_generate_markdown_report_writes_readable_vietnamese_utf8(self) -> None:
+        report_path = generate_markdown_report(
+            project_root=self.temp_dir,
+            findings=[],
+            routing_reason="Encoding smoke test.",
+            request_text="/id encoding",
+            config=self.config,
+            content_sources=[],
+        )
+
+        report_text = report_path.read_text(encoding="utf-8")
+        self.assertIn("## Bản Dịch Tiếng Việt", report_text)
+        self.assertIn("| ID | Mức độ | Khu vực | Nguồn | Bằng chứng | Đề xuất sửa |", report_text)
+        self.assertNotIn("B?n D?ch Ti?ng Vi?t", report_text)
+        self.assertNotIn("M?c ??", report_text)
+        self.assertNotIn("Báº", report_text)
+        self.assertNotIn("TÃ", report_text)
 
     def test_playwright_output_helpers_extract_clean_title_and_body(self) -> None:
         raw_title = """### Result
@@ -1057,6 +1075,49 @@ await page.evaluate('() => (...)');
         self.assertEqual(summary["commit_message"], "feat: update CLI workflow handling")
         self.assertEqual(summary["excluded_paths"], ["docs/communication.md", "outputs/sample/report.md"])
         self.assertEqual(summary["staged_changes"], ["M\tmain.py", "M\tcore/utils.py", "M\ttests/test_workflow.py"])
+
+    def test_checkgit_reports_sync_status_and_recent_activity(self) -> None:
+        commands: list[list[str]] = []
+        ensure_text_file(
+            self.temp_dir / "docs" / "communication.md",
+            "| Timestamp | From | To | Message/Task |\n|---|---|---|---|\n",
+        )
+        with (self.temp_dir / "docs" / "communication.md").open("a", encoding="utf-8") as handle:
+            handle.write("| 2026-04-25 11:00:00 | CQC Collector | Workflow | CQC evidence gathered. |\n")
+
+        def fake_run(cmd: list[str], cwd: Path, text: bool, capture_output: bool, check: bool) -> CompletedProcess[str]:
+            commands.append(cmd)
+            mapping = {
+                ("git", "rev-parse", "--is-inside-work-tree"): CompletedProcess(cmd, 0, "true\n", ""),
+                ("git", "branch", "--show-current"): CompletedProcess(cmd, 0, "main\n", ""),
+                ("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"): CompletedProcess(cmd, 0, "origin/main\n", ""),
+                ("git", "fetch"): CompletedProcess(cmd, 0, "", ""),
+                ("git", "rev-list", "--left-right", "--count", "origin/main...HEAD"): CompletedProcess(cmd, 0, "0 0\n", ""),
+                ("git", "status", "--short"): CompletedProcess(cmd, 0, " M docs/communication.md\n?? outputs/run/report.md\n M core/vqc.py\n", ""),
+                ("git", "log", "-1", "--format=%h %s", "HEAD"): CompletedProcess(cmd, 0, "abc123 latest local\n", ""),
+                ("git", "log", "-1", "--format=%h %s", "origin/main"): CompletedProcess(cmd, 0, "abc123 latest local\n", ""),
+                ("git", "log", "-5", "--date=short", "--format=%h %ad %s"): CompletedProcess(
+                    cmd,
+                    0,
+                    "abc123 2026-04-25 latest local\n",
+                    "",
+                ),
+            }
+            result = mapping.get(tuple(cmd))
+            if result is None:
+                raise AssertionError(f"Unexpected git command: {cmd}")
+            return result
+
+        with patch("core.utils.subprocess.run", side_effect=fake_run):
+            summary = checkgit_project(self.temp_dir)
+
+        self.assertEqual(summary["sync_status"], "up-to-date")
+        self.assertEqual(summary["fetch_status"], "ok")
+        self.assertEqual(summary["relevant_dirty_paths"], ["M core/vqc.py"])
+        self.assertEqual(summary["excluded_dirty_path_count"], 2)
+        self.assertIn("abc123 2026-04-25 latest local", summary["recent_commits"])
+        self.assertTrue(any("CQC evidence gathered" in item for item in summary["recent_communication"]))
+        self.assertIn(["git", "fetch"], commands)
 
 
 if __name__ == "__main__":

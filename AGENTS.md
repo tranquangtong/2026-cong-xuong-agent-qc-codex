@@ -37,6 +37,7 @@ The canonical mode mapping is:
 The project utility mapping is:
 
 - `/cleanup` -> cleanup cache and temp files safely
+- `/checkgit` -> check whether the current checkout is up to date with the connected GitHub upstream and summarize recent project implementation activity
 - `/upgit` -> cleanup, commit current changes, and push to git remote
 
 Default `/upgit` behavior:
@@ -55,6 +56,7 @@ When working in Codex chat, prefer the workflow skills:
 - `$cg-qc`
 - `$qc-reflect`
 - `$cleanup`
+- `$checkgit`
 - `$upgit`
 
 Use explicit workflow skills when the user clearly knows the target mode. If the request is ambiguous, reason from source type and stated intent before choosing a workflow.
@@ -68,6 +70,7 @@ The current repo-local skill folders are:
 - `.agents/skills/cg-qc`
 - `.agents/skills/qc-reflect`
 - `.agents/skills/cleanup`
+- `.agents/skills/checkgit`
 - `.agents/skills/upgit`
 - `.agents/skills/wcag-qc`
 
@@ -94,6 +97,7 @@ Apply these routing rules consistently:
 - Figma links that are explicitly about storyboard copy or text QA usually require both `graphic` and `content`, but `content` must only claim text coverage if the frame text is actually resolved
 - Manual QA feedback and reusable process lessons route to `reflect`
 - Cache, temp-file, or workspace cleanup requests route to the `cleanup` skill rather than a QA mode
+- Git freshness, branch sync, device-swap status, or project implementation log requests route to the `checkgit` skill rather than a QA mode
 - Git save, commit, push, or repository sync requests route to the `upgit` skill rather than a QA mode
 
 If a request mixes multiple scopes, keep the boundaries explicit rather than collapsing everything into one vague review.

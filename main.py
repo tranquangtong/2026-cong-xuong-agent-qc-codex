@@ -6,7 +6,7 @@ from pathlib import Path
 from core.config import AppConfig, ConfigError, get_project_root
 from core.content_sources import extract_figma_links, has_document_source_hint
 from core.graph import invoke_workflow
-from core.utils import cleanup_project, ensure_runtime_directories, upgit_project
+from core.utils import checkgit_project, cleanup_project, ensure_runtime_directories, upgit_project
 
 
 COMMAND_TO_AGENT = {
@@ -94,6 +94,51 @@ def main() -> int:
                 print(f"- {item}")
             if len(summary["removed_paths"]) > len(preview):
                 print(f"... and {len(summary['removed_paths']) - len(preview)} more")
+        return 0
+    if raw_text.lower().startswith("/checkgit"):
+        try:
+            summary = checkgit_project(project_root)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+
+        print(f"Branch: {summary['branch']}")
+        print(f"Upstream: {summary['upstream'] or 'not configured'}")
+        print(f"Fetch: {summary['fetch_status']}")
+        if summary.get("fetch_error"):
+            print(f"Fetch error: {summary['fetch_error']}")
+        print(f"Sync status: {summary['sync_status']} (ahead {summary['ahead_count']}, behind {summary['behind_count']})")
+        if summary.get("local_head"):
+            print(f"Local HEAD: {summary['local_head']}")
+        if summary.get("upstream_head"):
+            print(f"Upstream HEAD: {summary['upstream_head']}")
+
+        if summary["relevant_dirty_paths"]:
+            print("Relevant uncommitted changes:")
+            for item in summary["relevant_dirty_paths"]:
+                print(f"- {item}")
+            remaining = summary["relevant_dirty_path_count"] - len(summary["relevant_dirty_paths"])
+            if remaining > 0:
+                print(f"... and {remaining} more")
+        else:
+            print("Relevant uncommitted changes: none")
+
+        if summary["excluded_dirty_paths"]:
+            print("Runtime/generated uncommitted changes:")
+            for item in summary["excluded_dirty_paths"]:
+                print(f"- {item}")
+            remaining = summary["excluded_dirty_path_count"] - len(summary["excluded_dirty_paths"])
+            if remaining > 0:
+                print(f"... and {remaining} more")
+
+        if summary["recent_commits"]:
+            print("Recent commits:")
+            for item in summary["recent_commits"]:
+                print(f"- {item}")
+
+        if summary["recent_communication"]:
+            print("Recent project implementation log:")
+            for item in summary["recent_communication"]:
+                print(f"- {item}")
         return 0
     if raw_text.lower().startswith("/upgit"):
         commit_message = raw_text[len("/upgit") :].strip() or None

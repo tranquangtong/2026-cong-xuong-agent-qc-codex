@@ -25,11 +25,13 @@ For Codex chat workflows, the repo also ships repo-local skills under `.agents/s
 - `cg-qc`
 - `qc-reflect`
 - `cleanup`
+- `checkgit`
 - `upgit`
 
 ## High-level flow
 - `main.py` supports `/id`, `/cg`, `/fg`, `/cqc`, `/vqc`, `/reflect`, `/cleanup`, and `/upgit`
 - In Codex chat, the same cleanup utility can be invoked via `$cleanup`
+- In Codex chat, the git freshness/device-swap status utility can be invoked via `$checkgit`
 - In Codex chat, the git sync utility can be invoked via `$upgit`
 - In Codex chat, collaborative course QC should use `$cqc` when the request is specifically about one Articulate/Rise course flow
 - In Codex chat, local video QC should use `$vqc` when the request is about one local learning video plus subtitle artifact

@@ -133,6 +133,48 @@ def _count_ahead_of_upstream(project_root: Path, upstream: str | None) -> int:
         return 0
 
 
+def _count_ahead_behind_upstream(project_root: Path, upstream: str | None) -> tuple[int, int]:
+    if not upstream:
+        return 0, 0
+    result = _run_git_command(project_root, ["rev-list", "--left-right", "--count", f"{upstream}...HEAD"], check=False)
+    if result.returncode != 0:
+        return 0, 0
+    counts = result.stdout.strip().split()
+    if len(counts) != 2:
+        return 0, 0
+    try:
+        return int(counts[1]), int(counts[0])
+    except ValueError:
+        return 0, 0
+
+
+def _head_commit_summary(project_root: Path, ref: str) -> str:
+    result = _run_git_command(project_root, ["log", "-1", "--format=%h %s", ref], check=False)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _recent_commit_summaries(project_root: Path, limit: int = 5) -> list[str]:
+    result = _run_git_command(project_root, ["log", f"-{limit}", "--date=short", "--format=%h %ad %s"], check=False)
+    if result.returncode != 0:
+        return []
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _recent_communication_entries(project_root: Path, limit: int = 12) -> list[str]:
+    communication_path = project_root / "docs" / "communication.md"
+    if not communication_path.exists():
+        return []
+
+    rows: list[str] = []
+    for line in communication_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("|---") or stripped.startswith("| Timestamp "):
+            continue
+        if stripped.startswith("|"):
+            rows.append(stripped)
+    return rows[-limit:]
+
+
 UPGIT_EXCLUDED_PATHS = {
     "docs/communication.md",
 }
@@ -161,6 +203,12 @@ def _parse_name_status_lines(output: str) -> list[dict[str, object]]:
         parts = line.split("\t")
         status = parts[0]
         paths = [part for part in parts[1:] if part]
+        if not paths and len(raw_line) >= 4:
+            short_status = raw_line[:2].strip()
+            short_path = raw_line[3:].strip()
+            if short_path:
+                status = short_status
+                paths = [short_path]
         primary_path = paths[-1] if paths else ""
         entries.append(
             {
@@ -171,6 +219,76 @@ def _parse_name_status_lines(output: str) -> list[dict[str, object]]:
             }
         )
     return entries
+
+
+def checkgit_project(project_root: Path) -> dict[str, object]:
+    repo_probe = _run_git_command(project_root, ["rev-parse", "--is-inside-work-tree"], check=False)
+    if repo_probe.returncode != 0 or repo_probe.stdout.strip() != "true":
+        raise RuntimeError("`/checkgit` requires the current project to be a git repository.")
+
+    branch = _run_git_command(project_root, ["branch", "--show-current"], check=False).stdout.strip() or "HEAD"
+    upstream_probe = _run_git_command(
+        project_root,
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        check=False,
+    )
+    upstream = upstream_probe.stdout.strip() if upstream_probe.returncode == 0 else None
+
+    fetch_status = "skipped"
+    fetch_error = ""
+    if upstream:
+        fetch_result = _run_git_command(project_root, ["fetch"], check=False)
+        if fetch_result.returncode == 0:
+            fetch_status = "ok"
+        else:
+            fetch_status = "failed"
+            fetch_error = _git_error_message(fetch_result)
+
+    ahead_count, behind_count = _count_ahead_behind_upstream(project_root, upstream)
+    status_result = _run_git_command(project_root, ["status", "--short"], check=False)
+    status_entries = _parse_name_status_lines(status_result.stdout)
+    dirty_paths = [str(item.get("display", "")) for item in status_entries if item.get("display")]
+    excluded_dirty_paths = sorted(
+        {
+            path
+            for item in status_entries
+            for path in item["paths"]
+            if isinstance(path, str) and _is_upgit_excluded(path)
+        }
+    )
+    relevant_dirty_paths = [item for item in dirty_paths if not any(path in item for path in excluded_dirty_paths)]
+
+    sync_status = "unknown"
+    if not upstream:
+        sync_status = "no-upstream"
+    elif behind_count == 0 and ahead_count == 0:
+        sync_status = "up-to-date"
+    elif behind_count > 0 and ahead_count > 0:
+        sync_status = "diverged"
+    elif behind_count > 0:
+        sync_status = "behind"
+    elif ahead_count > 0:
+        sync_status = "ahead"
+
+    return {
+        "branch": branch,
+        "upstream": upstream,
+        "fetch_status": fetch_status,
+        "fetch_error": fetch_error,
+        "sync_status": sync_status,
+        "ahead_count": ahead_count,
+        "behind_count": behind_count,
+        "local_head": _head_commit_summary(project_root, "HEAD"),
+        "upstream_head": _head_commit_summary(project_root, upstream) if upstream else "",
+        "dirty_paths": dirty_paths[:20],
+        "dirty_path_count": len(dirty_paths),
+        "relevant_dirty_paths": relevant_dirty_paths[:20],
+        "relevant_dirty_path_count": len(relevant_dirty_paths),
+        "excluded_dirty_paths": excluded_dirty_paths[:20],
+        "excluded_dirty_path_count": len(excluded_dirty_paths),
+        "recent_commits": _recent_commit_summaries(project_root),
+        "recent_communication": _recent_communication_entries(project_root),
+    }
 
 
 def _collect_staged_changes(project_root: Path) -> list[dict[str, object]]:
