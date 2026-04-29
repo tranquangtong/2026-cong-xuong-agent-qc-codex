@@ -13,7 +13,7 @@ from api.service import JobService
 
 app = FastAPI(title="Cong Xuong Agent QC Web API", version="0.1.0")
 
-allowed_origins = [origin.strip() for origin in os.getenv("WEB_UI_ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500,https://tranquangtong.github.io").split(",") if origin.strip()]
+allowed_origins = [origin.strip() for origin in os.getenv("WEB_UI_ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
